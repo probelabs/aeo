@@ -37,4 +37,4 @@ Do **not** open consumer LLM websites. This skill only reads evidence JSON produ
 
 `⚠` = confirmation search (vendors already in the tool-call strings, brand was not). Not discovery.
 
-Full rules: [METHODOLOGY.md](../../METHODOLOGY.md). Measurement skill: [aeo](../aeo/SKILL.md).
+Full rules: [METHODOLOGY.md](../../METHODOLOGY.md). Measurement skill: [aeo](../aeo/SKILL.md). Turning a board into articles: [aeo-playbook](../aeo-playbook/SKILL.md).

@@ -6,7 +6,7 @@ Given a brand, aliases, competitors, and a query list, run the same question on 
 
 This is not Gemini grounding or AI Overviews. It measures local coding-agent CLIs.
 
-See [METHODOLOGY.md](METHODOLOGY.md). Schemas: [aeo-cli-config-v1](schemas/aeo-cli-config-v1.json), [aeo-cli-evidence-v1](schemas/aeo-cli-evidence-v1.json). Portable skill: [skills/aeo/SKILL.md](skills/aeo/SKILL.md).
+See [METHODOLOGY.md](METHODOLOGY.md) for the measurement spec and [PLAYBOOK.md](PLAYBOOK.md) for which pages to write and the measure→ship→re-run loop. Schemas: [aeo-cli-config-v1](schemas/aeo-cli-config-v1.json), [aeo-cli-evidence-v1](schemas/aeo-cli-evidence-v1.json). Skills: [aeo](skills/aeo/SKILL.md), [aeo-board](skills/aeo-board/SKILL.md), [aeo-playbook](skills/aeo-playbook/SKILL.md).
 
 ## Install
 

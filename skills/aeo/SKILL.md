@@ -90,7 +90,7 @@ Validates against `schemas/aeo-cli-evidence-v1.json`.
 | searched = yes, no configured vendors in the query strings | Open discovery search. |
 | brand in answer = yes | Mention. Independent of search. |
 
-Full write-up and a walkthrough of the XERJ fixture: [METHODOLOGY.md](../../METHODOLOGY.md).
+Full write-up and a walkthrough of the XERJ fixture: [METHODOLOGY.md](../../METHODOLOGY.md). Which pages to write and the measure→ship→re-run loop: [aeo-playbook](../aeo-playbook/SKILL.md) / [PLAYBOOK.md](../../PLAYBOOK.md).
 
 ## Raw flags (if the wrapper is blocked)
 

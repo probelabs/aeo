@@ -4,6 +4,8 @@ Local coding-agent CLIs only: Claude Code, Codex, Grok. Same question, two arms.
 
 This document does **not** measure Gemini grounding, Google AI Overviews, ChatGPT web UI, or any consumer chat website.
 
+This file is the measurement spec. Which articles to write, how to read a board into briefs, and the validation loop live in [PLAYBOOK.md](PLAYBOOK.md).
+
 ## Arms
 
 Every query × engine is run twice.
