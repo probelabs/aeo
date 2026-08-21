@@ -26,9 +26,13 @@ python3 -m aeo run --config aeo.config.json --engine all --arm both
 python3 -m aeo run --config aeo.config.json --prompt "What's the best way to search through a folder of files by content?"
 python3 -m aeo run --config aeo.config.json --engine claude --arm knowledge --dry-run
 python3 -m aeo report examples/xerj/aeo-data/example-run.json
+python3 -m aeo board examples/xerj/aeo-data/example-run.json
+python3 -m aeo run --config examples/xerj/aeo.config.json --class focus --dry-run
 ```
 
-`--arm knowledge|search|both` (default `both`). `--engine claude|codex|grok|all`. `--dry-run` prints the exact CLI command and exits.
+`--arm knowledge|search|both` (default `both`). `--engine claude|codex|grok|all`. `--class watch|focus|all` (default `all`). `--dry-run` prints the exact CLI command and exits.
+
+`aeo board` writes `aeo-data/boards/<run_id>.md` (humans) and `.json` (agents). `--format md|html|json` selects stdout.
 
 Evidence is append-only: each run writes a new `aeo-data/runs/<run_id>.json`. Raw samples are the source of truth; rates on a document are views.
 

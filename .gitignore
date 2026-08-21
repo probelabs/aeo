@@ -9,3 +9,4 @@ build/
 aeo-data/runs/
 *.log
 .DS_Store
+aeo-data/boards/

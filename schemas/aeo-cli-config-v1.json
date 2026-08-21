@@ -37,7 +37,21 @@
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "text": { "type": "string", "minLength": 1 },
-          "intent": { "type": "string" }
+          "intent": { "type": "string" },
+          "class": {
+            "type": "string",
+            "enum": ["watch", "focus"],
+            "description": "watch = keep measuring an incumbent/knowledge trap. focus = search-likely and/or product-fit (AEO work goes here)."
+          },
+          "why": {
+            "type": "string",
+            "description": "Short tag, e.g. knowledge_trap, search_likely, product_fit, search_likely+product_fit."
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Default true. Never set watch queries to false."
+          }
         }
       }
     },

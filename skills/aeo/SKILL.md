@@ -53,13 +53,25 @@ python3 -m aeo run --config aeo.config.json --engine all --arm both
 
 Default `samples_per_arm` is 1 (CLIs are slow). Pass `--samples N` for jitter.
 
+## Roster
+
+Keep the **full roster**. Do not drop watch queries because the incumbent won. Use `--class focus` when the work is content / AEO (search-likely and product-fit). Still run `--class all` on a cadence so a watch query that starts searching or mentioning the brand can be promoted.
+
+```bash
+python3 -m aeo run --config aeo.config.json --class focus --engine all --arm both
+python3 -m aeo run --config aeo.config.json --class all --engine all --arm both
+python3 -m aeo board aeo-data/runs/<run_id>.json
+```
+
 ## Score / report
 
 ```bash
 python3 -m aeo report aeo-data/runs/<run_id>.json
 ```
 
-Table columns: query, engine, knowledge hit, search hit, searched?, vendors in search queries, brand in answer.
+Table columns: query, class, engine, knowledge hit, search hit, searched?, vendors in search queries, brand in answer. One-line class tally (watch vs focus mention/search rates).
+
+For a decision-maker scoreboard (and agent JSON), use `python3 -m aeo board` — see [aeo-board](../aeo-board/SKILL.md).
 
 ## Where evidence is written
 

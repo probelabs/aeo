@@ -9,6 +9,7 @@ from typing import Any
 
 ENGINES = ("claude", "codex", "grok")
 ARMS = ("knowledge", "search")
+PROMPT_CLASSES = ("watch", "focus")
 DEFAULT_SAMPLES_PER_ARM = 1
 
 
@@ -17,6 +18,21 @@ class Prompt:
     id: str
     text: str
     intent: str | None = None
+    class_: str | None = None
+    why: str | None = None
+    enabled: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"id": self.id, "text": self.text}
+        if self.intent:
+            out["intent"] = self.intent
+        if self.class_:
+            out["class"] = self.class_
+        if self.why:
+            out["why"] = self.why
+        if not self.enabled:
+            out["enabled"] = False
+        return out
 
 
 @dataclass
@@ -43,10 +59,7 @@ class Config:
             "aliases": list(self.aliases),
             "competitors": list(self.competitors),
             "engines": list(self.engines),
-            "prompts": [
-                {"id": p.id, "text": p.text, **({"intent": p.intent} if p.intent else {})}
-                for p in self.prompts
-            ],
+            "prompts": [p.to_dict() for p in self.prompts],
             "data_dir": self.data_dir,
             "samples_per_arm": self.samples_per_arm,
         }
@@ -55,20 +68,32 @@ class Config:
         return out
 
 
+def _prompt_from_raw(raw: dict[str, Any]) -> Prompt:
+    enabled = raw.get("enabled", True)
+    if enabled is None:
+        enabled = True
+    class_ = raw.get("class")
+    if class_ is not None:
+        class_ = str(class_)
+    why = raw.get("why")
+    if why is not None:
+        why = str(why)
+    return Prompt(
+        id=str(raw["id"]),
+        text=str(raw["text"]),
+        intent=raw.get("intent"),
+        class_=class_,
+        why=why,
+        enabled=bool(enabled),
+    )
+
+
 def load_config(path: str | Path) -> Config:
     p = Path(path)
     data = json.loads(p.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"config must be a JSON object: {p}")
-    prompts = []
-    for raw in data.get("prompts") or []:
-        prompts.append(
-            Prompt(
-                id=str(raw["id"]),
-                text=str(raw["text"]),
-                intent=raw.get("intent"),
-            )
-        )
+    prompts = [_prompt_from_raw(raw) for raw in data.get("prompts") or []]
     engines = [e for e in (data.get("engines") or list(ENGINES)) if e in ENGINES]
     return Config(
         brand=str(data["brand"]),
@@ -82,6 +107,25 @@ def load_config(path: str | Path) -> Config:
         samples_per_arm=int(data.get("samples_per_arm") or DEFAULT_SAMPLES_PER_ARM),
         path=p,
     )
+
+
+def filter_prompts(
+    prompts: list[Prompt],
+    class_filter: str = "all",
+    *,
+    include_disabled: bool = False,
+) -> list[Prompt]:
+    """Select prompts by class. Disabled prompts are skipped unless include_disabled."""
+    if class_filter not in {"all", *PROMPT_CLASSES}:
+        raise ValueError(f"class_filter must be all|watch|focus, got {class_filter!r}")
+    out: list[Prompt] = []
+    for p in prompts:
+        if not include_disabled and not p.enabled:
+            continue
+        if class_filter != "all" and p.class_ != class_filter:
+            continue
+        out.append(p)
+    return out
 
 
 STARTER_PROMPTS = [
@@ -106,7 +150,7 @@ def starter_config(brand: str, domain: str) -> Config:
         aliases=aliases,
         competitors=["ripgrep", "recoll", "elasticsearch"],
         engines=list(ENGINES),
-        prompts=[Prompt(**p) for p in STARTER_PROMPTS],
+        prompts=[_prompt_from_raw(p) for p in STARTER_PROMPTS],
     )
 
 

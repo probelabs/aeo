@@ -18,6 +18,10 @@ class SchemaTests(unittest.TestCase):
         p = ROOT / "schemas" / "aeo-cli-config-v1.json"
         schema = json.loads(p.read_text(encoding="utf-8"))
         self.assertEqual(schema["title"], "aeo-cli-config-v1")
+        prompt_props = schema["properties"]["prompts"]["items"]["properties"]
+        self.assertEqual(prompt_props["class"]["enum"], ["watch", "focus"])
+        self.assertIn("why", prompt_props)
+        self.assertIn("enabled", prompt_props)
 
     def test_example_fixture_validates(self):
         doc = json.loads(
@@ -25,6 +29,7 @@ class SchemaTests(unittest.TestCase):
         )
         errors = validate_evidence(doc)
         self.assertEqual(errors, [], errors)
+        self.assertEqual(doc["prompts"][0]["class"], "watch")
 
     def test_xerj_config_validates(self):
         doc = json.loads(
@@ -32,6 +37,7 @@ class SchemaTests(unittest.TestCase):
         )
         errors = validate_config(doc)
         self.assertEqual(errors, [], errors)
+        self.assertEqual(len(doc["prompts"]), 84)
 
     def test_bad_evidence_fails(self):
         errors = validate_evidence({"schema_version": "nope"})

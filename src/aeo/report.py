@@ -1,4 +1,4 @@
-"""Print a table: query, engine, knowledge hit, search hit, searched?, vendors, brand."""
+"""Print a table: query, class, engine, knowledge hit, search hit, searched?, vendors, brand."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ def rows_from_doc(doc: dict[str, Any]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for prompt in doc.get("prompts") or []:
         query = prompt.get("prompt_text") or prompt.get("prompt_id") or ""
+        cls = prompt.get("class") or "—"
         engines = prompt.get("engines") or {}
         for engine in ("claude", "codex", "grok"):
             arms = engines.get(engine)
@@ -42,6 +43,7 @@ def rows_from_doc(doc: dict[str, Any]) -> list[dict[str, str]]:
             rows.append(
                 {
                     "query": query,
+                    "class": cls,
                     "engine": engine,
                     "knowledge": _yes(k.get("brand_mentioned") if isinstance(k, dict) else None),
                     "search": _yes(s.get("brand_mentioned") if isinstance(s, dict) else None),
@@ -56,6 +58,7 @@ def rows_from_doc(doc: dict[str, Any]) -> list[dict[str, str]]:
 def render_table(rows: list[dict[str, str]]) -> str:
     headers = [
         ("query", "query"),
+        ("class", "class"),
         ("engine", "engine"),
         ("knowledge", "knowledge hit"),
         ("search", "search hit"),
@@ -73,6 +76,7 @@ def render_table(rows: list[dict[str, str]]) -> str:
         display.append(shown)
         for k, _ in headers:
             widths[k] = max(widths[k], len(shown[k]))
+
     def fmt(row: dict[str, str]) -> str:
         return "  ".join(row[k].ljust(widths[k]) for k, _ in headers)
 
@@ -84,6 +88,55 @@ def render_table(rows: list[dict[str, str]]) -> str:
     if not display:
         lines.append("(no samples)")
     return "\n".join(lines)
+
+
+def _arm_ok(arm: Any) -> bool:
+    return isinstance(arm, dict) and "error" not in arm
+
+
+def class_tally(doc: dict[str, Any]) -> str:
+    """One-line N watch / N focus plus mention and search rates split by class."""
+    stats: dict[str, dict[str, float]] = {}
+    prompt_ids: dict[str, set[str]] = {}
+    for prompt in doc.get("prompts") or []:
+        cls = prompt.get("class") or "unclassed"
+        pid = prompt.get("prompt_id") or prompt.get("prompt_text") or ""
+        prompt_ids.setdefault(cls, set()).add(pid)
+        bucket = stats.setdefault(
+            cls, {"know_n": 0, "know_hits": 0, "search_n": 0, "search_hits": 0, "searched": 0}
+        )
+        for arms in (prompt.get("engines") or {}).values():
+            if not isinstance(arms, dict):
+                continue
+            k = arms.get("knowledge")
+            s = arms.get("search")
+            if _arm_ok(k):
+                bucket["know_n"] += 1
+                if k.get("brand_mentioned"):
+                    bucket["know_hits"] += 1
+            if _arm_ok(s):
+                bucket["search_n"] += 1
+                if s.get("brand_mentioned"):
+                    bucket["search_hits"] += 1
+                if s.get("searched"):
+                    bucket["searched"] += 1
+
+    n_watch = len(prompt_ids.get("watch") or [])
+    n_focus = len(prompt_ids.get("focus") or [])
+    parts = [f"{n_watch} watch, {n_focus} focus"]
+    extra = len(prompt_ids.get("unclassed") or [])
+    if extra:
+        parts[0] += f", {extra} unclassed"
+    for cls in ("watch", "focus"):
+        b = stats.get(cls)
+        if not b:
+            parts.append(f"{cls} mention_k=— mention_s=— search=—")
+            continue
+        mk = (b["know_hits"] / b["know_n"]) if b["know_n"] else 0.0
+        ms = (b["search_hits"] / b["search_n"]) if b["search_n"] else 0.0
+        sr = (b["searched"] / b["search_n"]) if b["search_n"] else 0.0
+        parts.append(f"{cls} mention_k={mk:.2f} mention_s={ms:.2f} search={sr:.2f}")
+    return "class tally: " + " | ".join(parts)
 
 
 def render_doc(doc: dict[str, Any]) -> str:
@@ -100,4 +153,5 @@ def render_doc(doc: dict[str, Any]) -> str:
     if extras:
         lines.append("")
         lines.append("rates (views, not source of truth): " + "  ".join(extras))
+    lines.append(class_tally(doc))
     return "\n".join(lines)

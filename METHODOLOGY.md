@@ -69,6 +69,32 @@ Default `samples_per_arm = 1`. Local CLIs are slow. Set `N > 1` only when you ne
 
 Evidence documents validate against `schemas/aeo-cli-evidence-v1.json`. Config against `schemas/aeo-cli-config-v1.json`. The generic workspace is brand + aliases + competitors + query list. XERJ is the first example, not the only brand.
 
+## Roster, not a shortlist
+
+Never drop a query because you lost it.
+
+- **watch** — keep measuring the incumbent (usually ripgrep from weights; search never fires). Stay on the roster. Still run two-arm. Do not write content first.
+- **focus** — queries that trigger web search, or where the brand is a plausible product answer. This is where AEO / content work goes.
+- A watch query that starts searching or mentioning the brand gets **promoted** to focus. `class` is a hypothesis; evidence can flip it.
+- How to interpret: a watch miss is expected; a focus miss is the actual gap.
+
+`--class watch|focus|all` filters the roster at run time. Default is `all`. Never set watch queries to `enabled: false`.
+
+## Decision board
+
+`python3 -m aeo board <evidence.json>` writes a human markdown board and an agent JSON board (`aeo-cli-board-v1`). Agents should treat the board JSON as the analysis input; raw evidence is for drill-down only.
+
+Call rules (deterministic, one call per query):
+
+| Call | When |
+| --- | --- |
+| `win` | Brand mentioned on the search arm or the knowledge arm (any engine). |
+| `gap` | Focus query, no brand mention, at least one engine actually searched. |
+| `search-blind` | Focus query, search was allowed, no engine searched. |
+| `trap` | Watch query, no brand mention (expected). |
+
+`⚠` on the search column means they searched, but `vendors_in_search_queries` already named a configured vendor and not the brand — confirmation, not discovery.
+
 ## How to read a run
 
 Walk-through of [`examples/xerj/aeo-data/example-run.json`](examples/xerj/aeo-data/example-run.json). One query:

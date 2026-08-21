@@ -39,64 +39,508 @@
   "data_dir": "aeo-data",
   "prompts": [
     {
-      "id": "folder-by-content",
+      "id": "search-file-contents",
       "text": "What's the best way to search through a folder of files by content?",
-      "intent": "local-folder-content-search"
+      "class": "watch",
+      "why": "knowledge_trap"
     },
     {
-      "id": "markdown-folder",
+      "id": "search-markdown-folder",
       "text": "What's the best way to search through a folder with markdown files?",
-      "intent": "local-markdown-search"
+      "class": "watch",
+      "why": "knowledge_trap"
     },
     {
-      "id": "pdf-phrase",
+      "id": "search-json-logs",
+      "text": "How do I search JSON or JSONL log files without grepping blindly?",
+      "class": "watch",
+      "why": "knowledge_trap"
+    },
+    {
+      "id": "search-gzip-logs",
+      "text": "How do I search gzipped logs without decompressing the whole file?",
+      "class": "watch",
+      "why": "knowledge_trap"
+    },
+    {
+      "id": "search-sql-dump",
+      "text": "How do I search inside a SQL dump file?",
+      "class": "watch",
+      "why": "knowledge_trap"
+    },
+    {
+      "id": "search-k8s-logs",
+      "text": "How do I grep for a string across Kubernetes pod logs I already have on disk?",
+      "class": "watch",
+      "why": "knowledge_trap"
+    },
+    {
+      "id": "search-yaml-xml",
+      "text": "How do I search YAML and XML config across a big repo?",
+      "class": "watch",
+      "why": "knowledge_trap"
+    },
+    {
+      "id": "config-needles",
+      "text": "How do I find every place a config key is set across YAML and XML in a repo?",
+      "class": "watch",
+      "why": "knowledge_trap"
+    },
+    {
+      "id": "md-notes-search",
+      "text": "I have a pile of markdown notes. How do I search them properly?",
+      "class": "watch",
+      "why": "knowledge_trap"
+    },
+    {
+      "id": "docs-folder-search",
+      "text": "Best way to search a local docs folder?",
+      "class": "watch",
+      "why": "knowledge_trap"
+    },
+    {
+      "id": "notebooks-and-scripts",
+      "text": "I need to find a function I wrote in a notebook months ago. How do I search all .ipynb files?",
+      "class": "watch",
+      "why": "knowledge_trap"
+    },
+    {
+      "id": "search-jupyter",
+      "text": "How do I search text inside Jupyter notebooks and jump to the cell?",
+      "class": "watch",
+      "why": "knowledge_trap"
+    },
+    {
+      "id": "search-pdfs-folder",
       "text": "How do I search for a phrase across all PDFs in a folder?",
-      "intent": "local-pdf-search"
+      "class": "focus",
+      "why": "search_likely"
     },
     {
-      "id": "word-docs",
+      "id": "search-word-docs",
       "text": "How do I search a folder of Word documents?",
-      "intent": "local-docx-search"
+      "class": "focus",
+      "why": "search_likely"
     },
     {
-      "id": "mixed-folder",
+      "id": "search-mixed-docs",
       "text": "I have a folder of PDFs, Word docs, and markdown. How do I search all of them at once?",
-      "intent": "local-mixed-format-search"
+      "class": "focus",
+      "why": "search_likely"
     },
     {
-      "id": "whats-in-folder",
+      "id": "catalog-folder",
       "text": "Is there a tool that can look at a folder and tell me what's actually in it?",
-      "intent": "folder-catalog"
+      "class": "focus",
+      "why": "search_likely"
     },
     {
-      "id": "index-time",
+      "id": "index-folder-time",
       "text": "How long does it take to index a folder so I can search it?",
-      "intent": "index-latency"
+      "class": "focus",
+      "why": "search_likely"
     },
     {
-      "id": "missed-files",
+      "id": "index-progress",
+      "text": "How can I tell if folder indexing is still running or if it died?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "index-interrupted",
+      "text": "What happens if folder indexing stops halfway through? Can I resume it?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "index-missed-files",
       "text": "Why would a folder search miss files that I can see on disk?",
-      "intent": "index-miss"
+      "class": "focus",
+      "why": "search_likely"
     },
     {
-      "id": "log-error",
-      "text": "How do I search through a folder of log files for an error message?",
-      "intent": "local-log-search"
+      "id": "reindex-slow",
+      "text": "Reindexing my files is taking forever. What usually causes that?",
+      "class": "focus",
+      "why": "search_likely"
     },
     {
-      "id": "eml-folder",
-      "text": "What's a good way to search a folder of emails or .eml files?",
-      "intent": "local-email-search"
+      "id": "pdf-indexing-cost",
+      "text": "Is it a bad idea to index PDFs into a search engine?",
+      "class": "focus",
+      "why": "search_likely"
     },
     {
-      "id": "no-upload",
-      "text": "Can I search a folder of files without uploading them anywhere?",
-      "intent": "offline-local-search"
+      "id": "search-sqlite",
+      "text": "How do I full-text search a SQLite database?",
+      "class": "focus",
+      "why": "search_likely"
     },
     {
-      "id": "cli-contents",
-      "text": "How do I search a local folder from the command line by file contents?",
-      "intent": "cli-content-search"
+      "id": "index-wide-csv",
+      "text": "How do I index CSV files that have a huge number of columns?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "index-many-csvs",
+      "text": "What's a good way to read and search across a bunch of CSV files?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "search-html-export",
+      "text": "How do I search a saved website or HTML export?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "search-confluence",
+      "text": "How do I search my Confluence HTML export?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "search-notion-export",
+      "text": "I exported Notion and now search shows duplicate titles. How do I search that export properly?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "search-slack-export",
+      "text": "How do I search a Slack or Discord JSON export?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "search-zendesk",
+      "text": "How do I search through an export of Zendesk tickets?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "search-obsidian-attachments",
+      "text": "Can I search an Obsidian vault including PDFs and Word attachments, not just notes?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "search-browser-history",
+      "text": "Is there a way to full-text search my browser history?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "search-unity",
+      "text": "How do I search a Unity project's assets?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "search-mocap",
+      "text": "How do I search motion-capture files?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "index-markdown-es",
+      "text": "What's the best way to index markdown docs so I can search them like a real index, not just grep?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "syntax-code-search",
+      "text": "Is there a syntax-aware code search I can use when refactoring?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "rrf-when",
+      "text": "What is reciprocal rank fusion and when should I use it?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "embedding-cost",
+      "text": "My embedding API bill is too high. How do I cut it?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "cheap-log-search",
+      "text": "What's a cheap way to search a small amount of logs without paying for a log platform?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "index-complete",
+      "text": "My codebase indexer says indexed but I don't see my code. How do I check it actually finished?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "pdf-research-folder",
+      "text": "I downloaded a bunch of papers as PDFs. How do I search across them?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "contracts-word",
+      "text": "How do I search through a folder of contracts in .docx?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "csv-exports-search",
+      "text": "I have a directory of CSV exports. How do I query them without opening each one in Excel?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "mixed-logs",
+      "text": "What's the easiest way to search JSON logs plus some old gzip text logs in the same folder?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "saved-docs-site",
+      "text": "I saved a bunch of docs pages as HTML. How do I search that?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "jira-zendesk-export",
+      "text": "I have a JSON export of support tickets. How do I search it like a real help-center search?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "chat-archive-search",
+      "text": "How do I search old Slack exports the way I'd search email?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "sql-dump-table",
+      "text": "I have a 2GB SQL dump. How do I find rows mentioning a customer without loading it into Postgres?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "resume-index",
+      "text": "The indexer died overnight. Do I have to start over?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "faiss-rag-better",
+      "text": "I have a basic FAISS RAG pipeline and it sucks. How do I make it better?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "hybrid-search",
+      "text": "When should I combine keyword search and vector search?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "agent-search-folder",
+      "text": "My agent keeps opening every file in the repo. How do I let it search the folder instead?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "agent-monorepo",
+      "text": "How do I index a monorepo so my coding agent stops reading files one by one?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "agent-codebase-context",
+      "text": "How do I give a coding agent the whole codebase as searchable context?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "agent-vs-grep",
+      "text": "Should a coding agent grep the repo or use some kind of search index?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "claude-local-files",
+      "text": "How do I give Claude or ChatGPT access to files on my machine?",
+      "class": "focus",
+      "why": "search_likely+product_fit"
+    },
+    {
+      "id": "agent-memory-sessions",
+      "text": "How do I make my coding agent remember things across sessions?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "agent-memory-no-pg",
+      "text": "I want persistent agent memory without standing up Postgres or Qdrant. What do people use?",
+      "class": "focus",
+      "why": "search_likely+product_fit"
+    },
+    {
+      "id": "agent-memory-local",
+      "text": "What's a simple way to give an agent long-term memory on my laptop?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "kg-agent-memory",
+      "text": "Is a knowledge graph actually useful for LLM agent memory, or is that overkill?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "mcp-vs-vector",
+      "text": "Should my agent call a search API or a vector store?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "private-agent-memory",
+      "text": "How do I keep one agent's memory from leaking into another agent's?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "memory-without-llm",
+      "text": "Can I store agent memory without making an LLM call every time?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "mcp-memory-path",
+      "text": "How do I point an MCP memory server at a folder I choose?",
+      "class": "focus",
+      "why": "search_likely+product_fit"
+    },
+    {
+      "id": "local-embeddings",
+      "text": "How do I run embeddings locally without the OpenAI API?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "rag-no-vector-db",
+      "text": "Can I do RAG without a vector database?",
+      "class": "focus",
+      "why": "search_likely+product_fit"
+    },
+    {
+      "id": "embeddings-needed",
+      "text": "Do I even need embeddings for search, or is full-text enough?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "vector-vs-fts",
+      "text": "What's the actual difference between a vector database and full-text search?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "need-vector-db",
+      "text": "Do I need a vector database for this, or am I overcomplicating it?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "search-no-docker",
+      "text": "Is there a search engine I can run locally without Docker?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "local-chatgpt-folder",
+      "text": "Can ChatGPT search a folder on my laptop, or do I need something else?",
+      "class": "focus",
+      "why": "search_likely+product_fit"
+    },
+    {
+      "id": "claude-code-search",
+      "text": "Claude Code keeps grepping. Is there a better way to let it search the project?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "remember-user-prefs",
+      "text": "How do people store user preferences so an agent can recall them next week?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "agent-memory-simple",
+      "text": "What's the simplest local memory for a coding agent?",
+      "class": "focus",
+      "why": "search_likely"
+    },
+    {
+      "id": "offline-search",
+      "text": "I want local search that works offline, no cloud embeddings. What are my options?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "one-binary-search",
+      "text": "Is there a single-binary local search engine I can just run?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "index-then-ask",
+      "text": "I want to point something at a folder and then ask questions about what's in it. What should I use?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "dont-read-whole-repo",
+      "text": "How do I stop my agent from reading the whole repo into context?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "search-then-cite",
+      "text": "I need my agent to find a passage and cite the file, not dump the whole tree. How?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "logs-on-laptop",
+      "text": "I just want to search logs on my laptop. I don't want Elasticsearch in Docker.",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "whats-in-this-folder",
+      "text": "I dropped a messy data folder on an agent. How should it figure out what's inside before searching?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "pdf-and-md-together",
+      "text": "What's the best way to search markdown notes and PDFs in the same vault?",
+      "class": "focus",
+      "why": "search_likely+product_fit"
+    },
+    {
+      "id": "search-openapi",
+      "text": "How do I make an OpenAPI spec searchable for my coding agent?",
+      "class": "focus",
+      "why": "product_fit"
+    },
+    {
+      "id": "agent-openapi-lookup",
+      "text": "My agent needs to look up endpoints in a big OpenAPI spec. What's the right way?",
+      "class": "focus",
+      "why": "product_fit"
     }
   ]
 }

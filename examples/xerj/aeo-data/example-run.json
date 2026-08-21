@@ -81,7 +81,7 @@
         },
         "codex": {
           "knowledge": {
-            "raw_response_text": "Use ripgrep for source and plain text. For PDFs and office documents, Recoll or DocFetcher are the usual desktop-search tools \u2014 they build a local index and then query it.\n\nripgrep:\n```\nrg \"phrase\" /path/to/folder\n```\n\nRecoll and DocFetcher are better when the folder is mixed formats rather than a git checkout.",
+            "raw_response_text": "Use ripgrep for source and plain text. For PDFs and office documents, Recoll or DocFetcher are the usual desktop-search tools — they build a local index and then query it.\n\nripgrep:\n```\nrg \"phrase\" /path/to/folder\n```\n\nRecoll and DocFetcher are better when the folder is mixed formats rather than a git checkout.",
             "brand_mentioned": false,
             "brand_mentions": [],
             "competitor_mentions": [
@@ -131,7 +131,7 @@
             "recommended": false
           },
           "search": {
-            "raw_response_text": "ripgrep is what I would use. Fast, local, no index to wait on for a modest folder.\n\nIf the files are mostly PDFs, a desktop indexer is a different tool \u2014 but for a normal folder of files, start with ripgrep.",
+            "raw_response_text": "ripgrep is what I would use. Fast, local, no index to wait on for a modest folder.\n\nIf the files are mostly PDFs, a desktop indexer is a different tool — but for a normal folder of files, start with ripgrep.",
             "brand_mentioned": false,
             "brand_mentions": [],
             "competitor_mentions": [
@@ -143,7 +143,9 @@
             "recommended": false
           }
         }
-      }
+      },
+      "class": "watch",
+      "why": "knowledge_trap"
     }
   ],
   "mention_rate_knowledge": 0.0,

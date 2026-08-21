@@ -112,6 +112,8 @@
         "prompt_id": { "type": "string" },
         "prompt_text": { "type": "string" },
         "intent": { "type": "string" },
+        "class": { "type": "string", "enum": ["watch", "focus"] },
+        "why": { "type": "string" },
         "sample_index": { "type": "integer", "minimum": 1 },
         "engines": {
           "type": "object",
