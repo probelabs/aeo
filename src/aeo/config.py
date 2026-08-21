@@ -114,15 +114,19 @@ def filter_prompts(
     class_filter: str = "all",
     *,
     include_disabled: bool = False,
+    ids: list[str] | None = None,
 ) -> list[Prompt]:
-    """Select prompts by class. Disabled prompts are skipped unless include_disabled."""
+    """Select prompts by class and optional id list. Disabled prompts are skipped unless include_disabled."""
     if class_filter not in {"all", *PROMPT_CLASSES}:
         raise ValueError(f"class_filter must be all|watch|focus, got {class_filter!r}")
+    wanted = set(ids) if ids else None
     out: list[Prompt] = []
     for p in prompts:
         if not include_disabled and not p.enabled:
             continue
         if class_filter != "all" and p.class_ != class_filter:
+            continue
+        if wanted is not None and p.id not in wanted:
             continue
         out.append(p)
     return out

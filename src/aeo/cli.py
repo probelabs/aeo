@@ -55,7 +55,18 @@ def main(argv: list[str] | None = None) -> int:
     p_run = sub.add_parser("run", help="Run one query or a config batch")
     p_run.add_argument("--config", help="Path to aeo.config.json")
     p_run.add_argument("--prompt", help="Single prompt text (overrides config prompts)")
-    p_run.add_argument("--prompt-id", default="adhoc", help="prompt_id when using --prompt")
+    p_run.add_argument(
+        "--prompt-id",
+        default="adhoc",
+        help="Label for --prompt (default adhoc). Does not filter the roster.",
+    )
+    p_run.add_argument(
+        "--only-id",
+        action="append",
+        dest="only_ids",
+        metavar="ID",
+        help="Filter the config roster to this prompt id. Repeatable. Ignored with --prompt.",
+    )
     p_run.add_argument(
         "--arm",
         choices=["knowledge", "search", "both"],
@@ -165,9 +176,15 @@ def cmd_run(args: argparse.Namespace) -> int:
         if not cfg.prompts:
             print("config has no prompts; pass --prompt", file=sys.stderr)
             return 1
-        selected = filter_prompts(cfg.prompts, args.prompt_class)
+        selected = filter_prompts(
+            cfg.prompts, args.prompt_class, ids=args.only_ids or None
+        )
         if not selected:
-            print(f"no prompts match --class {args.prompt_class}", file=sys.stderr)
+            print(
+                f"no prompts match --class {args.prompt_class}"
+                + (f" --only-id {args.only_ids}" if args.only_ids else ""),
+                file=sys.stderr,
+            )
             return 1
         prompts = [_prompt_payload(p) for p in selected]
 

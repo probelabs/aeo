@@ -65,6 +65,17 @@ class ClassFilterTests(unittest.TestCase):
         }
         self.assertEqual(validate_config(mini), [])
 
+    def test_ids_filter(self):
+        cfg = load_config(ROOT / "examples" / "xerj" / "aeo.config.json")
+        one = filter_prompts(cfg.prompts, "all", ids=["search-pdfs-folder"])
+        self.assertEqual([p.id for p in one], ["search-pdfs-folder"])
+        two = filter_prompts(
+            cfg.prompts, "focus", ids=["search-pdfs-folder", "search-file-contents"]
+        )
+        self.assertEqual([p.id for p in two], ["search-pdfs-folder"])
+        missing = filter_prompts(cfg.prompts, "all", ids=["does-not-exist"])
+        self.assertEqual(missing, [])
+
 
 if __name__ == "__main__":
     unittest.main()

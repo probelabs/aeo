@@ -51,7 +51,7 @@ python3 -m aeo run --config aeo.config.json \
 python3 -m aeo run --config aeo.config.json --engine all --arm both
 ```
 
-Default `samples_per_arm` is 1 (CLIs are slow). Pass `--samples N` for jitter.
+Default `samples_per_arm` is 1 (CLIs are slow). Pass `--samples N` for jitter on **this** invocation (it is not a per-id config field). `--only-id ID` (repeatable) filters the roster; `--prompt-id` only labels `--prompt`.
 
 ## Roster
 
