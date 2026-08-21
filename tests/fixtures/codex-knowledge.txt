@@ -1,0 +1,1 @@
+ripgrep is what I would use for a folder of files.

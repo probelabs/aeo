@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"t1"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_1","type":"web_search","action":{"queries":["ripgrep vs Recoll vs DocFetcher"]}}}
+{"type":"item.completed","item":{"id":"item_2","type":"web_search","query":"DocFetcher local folder search"}}
+{"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"Use Recoll or ripgrep."}}
+{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":8}}

@@ -1,0 +1,102 @@
+{
+  "schema_version": "aeo-cli-config-v1",
+  "brand": "XERJ",
+  "domain": "xerj.org",
+  "aliases": [
+    "xerj",
+    "xerj.org",
+    "xerj.ai",
+    "xerj-org"
+  ],
+  "competitors": [
+    "ripgrep",
+    "recoll",
+    "docfetcher",
+    "elasticsearch",
+    "meilisearch",
+    "typesense",
+    "weaviate",
+    "qdrant",
+    "pinecone",
+    "vscode",
+    "obsidian",
+    "grep",
+    "ack",
+    "lucene",
+    "solr",
+    "opensearch",
+    "algolia",
+    "spotlight",
+    "fsearch",
+    "dtsearch"
+  ],
+  "engines": [
+    "claude",
+    "codex",
+    "grok"
+  ],
+  "samples_per_arm": 1,
+  "data_dir": "aeo-data",
+  "prompts": [
+    {
+      "id": "folder-by-content",
+      "text": "What's the best way to search through a folder of files by content?",
+      "intent": "local-folder-content-search"
+    },
+    {
+      "id": "markdown-folder",
+      "text": "What's the best way to search through a folder with markdown files?",
+      "intent": "local-markdown-search"
+    },
+    {
+      "id": "pdf-phrase",
+      "text": "How do I search for a phrase across all PDFs in a folder?",
+      "intent": "local-pdf-search"
+    },
+    {
+      "id": "word-docs",
+      "text": "How do I search a folder of Word documents?",
+      "intent": "local-docx-search"
+    },
+    {
+      "id": "mixed-folder",
+      "text": "I have a folder of PDFs, Word docs, and markdown. How do I search all of them at once?",
+      "intent": "local-mixed-format-search"
+    },
+    {
+      "id": "whats-in-folder",
+      "text": "Is there a tool that can look at a folder and tell me what's actually in it?",
+      "intent": "folder-catalog"
+    },
+    {
+      "id": "index-time",
+      "text": "How long does it take to index a folder so I can search it?",
+      "intent": "index-latency"
+    },
+    {
+      "id": "missed-files",
+      "text": "Why would a folder search miss files that I can see on disk?",
+      "intent": "index-miss"
+    },
+    {
+      "id": "log-error",
+      "text": "How do I search through a folder of log files for an error message?",
+      "intent": "local-log-search"
+    },
+    {
+      "id": "eml-folder",
+      "text": "What's a good way to search a folder of emails or .eml files?",
+      "intent": "local-email-search"
+    },
+    {
+      "id": "no-upload",
+      "text": "Can I search a folder of files without uploading them anywhere?",
+      "intent": "offline-local-search"
+    },
+    {
+      "id": "cli-contents",
+      "text": "How do I search a local folder from the command line by file contents?",
+      "intent": "cli-content-search"
+    }
+  ]
+}

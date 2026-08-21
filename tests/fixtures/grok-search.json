@@ -1,0 +1,7 @@
+{
+  "message": "ripgrep is the usual choice for folder content search.",
+  "tool_calls": [
+    {"name": "web_search", "query": "best folder content search tool"},
+    {"name": "web_fetch", "url": "https://example.com/rg"}
+  ]
+}

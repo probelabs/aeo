@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://probelabs.com/schema/aeo-cli-config-v1.json",
+  "title": "aeo-cli-config-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["brand", "domain", "aliases", "competitors", "engines", "prompts"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "aeo-cli-config-v1"
+    },
+    "brand": { "type": "string", "minLength": 1 },
+    "domain": { "type": "string", "minLength": 1 },
+    "aliases": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "competitors": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Competitor product/tool names (not URLs)."
+    },
+    "engines": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "enum": ["claude", "codex", "grok"] },
+      "uniqueItems": true
+    },
+    "prompts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "text": { "type": "string", "minLength": 1 },
+          "intent": { "type": "string" }
+        }
+      }
+    },
+    "cli": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "claude": { "type": "string", "minLength": 1 },
+        "codex": { "type": "string", "minLength": 1 },
+        "grok": { "type": "string", "minLength": 1 }
+      }
+    },
+    "data_dir": { "type": "string", "minLength": 1 },
+    "samples_per_arm": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    }
+  }
+}
