@@ -14,10 +14,12 @@ from aeo.config import Config
 # Operational suffix only. Do not add brand, rust, or extra stack words.
 OPERATIONAL_SUFFIX = (
     "Recommend existing tools or products if relevant. "
-    "Do not write, edit, or execute files."
+    "Do not write, edit, execute, or read files from disk. "
+    "Do not inspect the working directory or parent folders."
 )
 
 DEFAULT_TIMEOUT = 300
+GROK_FILE_TOOLS = "read,write,edit,bash,glob,grep,ls"
 
 
 def user_prompt(text: str) -> str:
@@ -28,12 +30,25 @@ def empty_hooks_path() -> Path:
     return Path(__file__).resolve().parent / "data" / "claude-empty-hooks.json"
 
 
+def isolate_cwd() -> Path:
+    """Empty dir whose parent is NOT the AEO/brand tree.
+
+    Grok/Codex will list `.` and `..`. A cwd of ~/.aeo/scratch lets the
+    model read protocol.json, keywords, and the playbook in the parent.
+    /tmp/aeo-isolate-* only shows other temp dirs.
+    """
+    root = Path(os.environ.get("AEO_ISOLATE_ROOT") or tempfile.gettempdir())
+    root.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix="aeo-isolate-", dir=str(root)))
+
+
 @dataclass
 class Invocation:
     engine: str
     arm: str
     argv: list[str]
     prompt: str
+    cwd: Path | None = None
 
 
 def build_invocation(
@@ -44,15 +59,16 @@ def build_invocation(
 ) -> Invocation:
     prompt = user_prompt(prompt_text)
     cli = cfg.cli_path(engine)
+    isolated = isolate_cwd()
     if engine == "claude":
         argv = _claude_argv(cli, arm, prompt)
     elif engine == "codex":
         argv = _codex_argv(cli, arm, prompt)
     elif engine == "grok":
-        argv = _grok_argv(cli, arm, prompt)
+        argv = _grok_argv(cli, arm, prompt, isolated)
     else:
         raise ValueError(f"unknown engine: {engine}")
-    return Invocation(engine=engine, arm=arm, argv=argv, prompt=prompt)
+    return Invocation(engine=engine, arm=arm, argv=argv, prompt=prompt, cwd=isolated)
 
 
 def _claude_argv(cli: str, arm: str, prompt: str) -> list[str]:
@@ -94,11 +110,27 @@ def _codex_argv(cli: str, arm: str, prompt: str) -> list[str]:
     return argv
 
 
-def _grok_argv(cli: str, arm: str, prompt: str) -> list[str]:
+def _grok_argv(cli: str, arm: str, prompt: str, cwd: Path) -> list[str]:
+    # -p/--single consumes the next argument as the prompt. Flags must come first.
+    # strict: read CWD + system paths only (not ~/.aeo). On macOS child network
+    # still works so the search arm can use web_search.
+    argv = [
+        cli,
+        "--cwd",
+        str(cwd),
+        "--no-memory",
+        "--sandbox",
+        "strict",
+        "--disallowed-tools",
+        GROK_FILE_TOOLS,
+        "--verbatim",
+    ]
     if arm == "knowledge":
-        return [cli, "-p", "--disable-web-search", "--", prompt]
-    # Search is on by default. json --verbatim, NOT streaming-json.
-    return [cli, "-p", "--output-format", "json", "--verbatim", "--", prompt]
+        argv += ["--disable-web-search"]
+    else:
+        argv += ["--output-format", "json"]
+    argv += ["-p", prompt]
+    return argv
 
 
 def format_command(argv: list[str]) -> str:
@@ -132,6 +164,9 @@ def run_invocation(inv: Invocation, *, timeout: int = DEFAULT_TIMEOUT) -> ExecRe
             timeout=timeout,
             env=env,
             check=False,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            cwd=str(inv.cwd) if inv.cwd else None,
         )
         err = None
         if proc.returncode != 0 and not (proc.stdout or "").strip():

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -85,8 +86,9 @@ def main(argv: list[str] | None = None) -> int:
         help="Filter config prompts by class (default all)",
     )
     p_run.add_argument("--dry-run", action="store_true", help="Print CLI commands, do not execute")
-    p_run.add_argument("--out", help="Evidence JSON path (must not already exist)")
+    p_run.add_argument("--out", help="Evidence JSON path. Reuses the file and skips completed prompt×engine×arm cells.")
     p_run.add_argument("--timeout", type=int, default=300)
+    p_run.add_argument("--retries", type=int, default=2, help="Retries per cell after timeout or CLI error (default 2)")
     p_run.add_argument("--samples", type=int, help="Override samples_per_arm")
 
     p_rep = sub.add_parser("report", help="Print a table from evidence JSON")
@@ -159,6 +161,48 @@ def _prompt_payload(p: Any) -> dict[str, Any]:
     }
 
 
+def _find_entry(doc: dict[str, Any], prompt_id: str, sample_index: int, samples: int) -> dict[str, Any] | None:
+    for entry in doc.get("prompts") or []:
+        if entry.get("prompt_id") != prompt_id:
+            continue
+        if samples > 1 and int(entry.get("sample_index") or 1) != sample_index:
+            continue
+        return entry
+    return None
+
+
+def _cell_done(entry: dict[str, Any], engine: str, arm: str) -> bool:
+    got = ((entry.get("engines") or {}).get(engine) or {})
+    return arm in got
+
+
+def _should_retry(error: str | None) -> bool:
+    if not error:
+        return False
+    if "CLI not found" in error or "failed to start" in error:
+        return False
+    return True
+
+
+def _run_cell(engine: str, arm: str, prompt_id: str, inv: Any, timeout: int, retries: int) -> Any:
+    last = None
+    attempts = max(0, int(retries)) + 1
+    for attempt in range(attempts):
+        if attempt:
+            print(
+                f"retry {attempt}/{retries} {engine} {arm} ({prompt_id}) after {last.error}",
+                file=sys.stderr,
+                flush=True,
+            )
+            time.sleep(min(8, 2 ** (attempt - 1)))
+        last = run_invocation(inv, timeout=timeout)
+        if not last.error:
+            return last
+        if not _should_retry(last.error):
+            return last
+    return last
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     try:
         cfg = _resolve_config(args.config)
@@ -169,6 +213,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     engines = list(cfg.engines) if args.engine == "all" else [args.engine]
     arms = ["knowledge", "search"] if args.arm == "both" else [args.arm]
     samples = max(1, int(args.samples or cfg.samples_per_arm))
+    retries = int(getattr(args, "retries", 2) or 0)
 
     if args.prompt:
         prompts = [{"id": args.prompt_id, "text": args.prompt, "intent": None, "class": None, "why": None}]
@@ -176,13 +221,15 @@ def cmd_run(args: argparse.Namespace) -> int:
         if not cfg.prompts:
             print("config has no prompts; pass --prompt", file=sys.stderr)
             return 1
-        selected = filter_prompts(
-            cfg.prompts, args.prompt_class, ids=args.only_ids or None
-        )
+        only_ids = getattr(args, "only_ids", None)
+        try:
+            selected = filter_prompts(cfg.prompts, args.prompt_class, ids=only_ids or None)
+        except TypeError:
+            selected = filter_prompts(cfg.prompts, args.prompt_class)
         if not selected:
             print(
                 f"no prompts match --class {args.prompt_class}"
-                + (f" --only-id {args.only_ids}" if args.only_ids else ""),
+                + (f" --only-id {only_ids}" if only_ids else ""),
                 file=sys.stderr,
             )
             return 1
@@ -199,47 +246,66 @@ def cmd_run(args: argparse.Namespace) -> int:
                         print()
         return 0
 
-    run_id = new_run_id()
-    doc = new_document(
-        cfg,
-        run_id=run_id,
-        engines=engines,
-        samples_per_arm=samples,
-    )
+    out = Path(args.out) if args.out else None
+    if out and out.exists():
+        doc = load_document(out)
+        run_id = (doc.get("run") or {}).get("run_id") or new_run_id()
+        print(f"resume {out} ({len(doc.get('prompts') or [])} prompts already stored)", file=sys.stderr, flush=True)
+    else:
+        run_id = new_run_id()
+        doc = new_document(
+            cfg,
+            run_id=run_id,
+            engines=engines,
+            samples_per_arm=samples,
+        )
+    if out is None:
+        out = default_out_path(cfg, run_id)
+
+    skipped = 0
+    ran = 0
     for p in prompts:
         for sample_index in range(1, samples + 1):
-            entry: dict[str, Any] = {
-                "prompt_id": p["id"],
-                "prompt_text": p["text"],
-                "engines": {},
-            }
-            if p.get("intent"):
-                entry["intent"] = p["intent"]
-            if p.get("class"):
-                entry["class"] = p["class"]
-            if p.get("why"):
-                entry["why"] = p["why"]
-            if samples > 1:
-                entry["sample_index"] = sample_index
+            entry = _find_entry(doc, p["id"], sample_index, samples)
+            created = False
+            if entry is None:
+                created = True
+                entry = {
+                    "prompt_id": p["id"],
+                    "prompt_text": p["text"],
+                    "engines": {},
+                }
+                if p.get("intent"):
+                    entry["intent"] = p["intent"]
+                if p.get("class"):
+                    entry["class"] = p["class"]
+                if p.get("why"):
+                    entry["why"] = p["why"]
+                if samples > 1:
+                    entry["sample_index"] = sample_index
             for engine in engines:
-                arms_out: dict[str, Any] = {}
+                arms_out = dict((entry.get("engines") or {}).get(engine) or {})
                 for arm in arms:
+                    if _cell_done(entry, engine, arm):
+                        skipped += 1
+                        print(f"skip {engine} {arm} ({p['id']}) already stored", file=sys.stderr, flush=True)
+                        continue
                     inv = build_invocation(engine, arm, p["text"], cfg)
-                    print(f"running {engine} {arm} ({p['id']}) …", file=sys.stderr)
-                    result = run_invocation(inv, timeout=args.timeout)
+                    print(f"running {engine} {arm} ({p['id']}) …", file=sys.stderr, flush=True)
+                    result = _run_cell(engine, arm, p["id"], inv, args.timeout, retries)
                     parsed = parse_engine(engine, result.stdout)
                     if not parsed.raw_response_text and result.stderr and not result.error:
                         parsed.raw_response_text = result.stderr.strip()
                     arms_out[arm] = score_arm(parsed, cfg, error=result.error)
-                entry["engines"][engine] = arms_out
-            doc["prompts"].append(entry)
+                    ran += 1
+                if arms_out:
+                    entry.setdefault("engines", {})[engine] = arms_out
+            if created:
+                doc["prompts"].append(entry)
+            write_document(doc, out, overwrite=True)
+            print(f"checkpoint {len(doc['prompts'])}/{len(prompts)} -> {out}", file=sys.stderr, flush=True)
 
-    out = Path(args.out) if args.out else default_out_path(cfg, run_id)
-    try:
-        write_document(doc, out)
-    except FileExistsError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+    print(f"done ran={ran} skipped={skipped} -> {out}", file=sys.stderr, flush=True)
     print(out)
     return 0
 

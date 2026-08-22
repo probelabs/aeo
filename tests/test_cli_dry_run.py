@@ -28,11 +28,17 @@ class DryRunTests(unittest.TestCase):
 
     def test_grok_flags(self):
         cfg = starter_config("XERJ", "xerj.org")
-        k = format_command(build_invocation("grok", "knowledge", "q", cfg).argv)
+        kn = build_invocation("grok", "knowledge", "q", cfg)
+        k = format_command(kn.argv)
         self.assertIn("--disable-web-search", k)
+        self.assertIn("--sandbox strict", k)
+        self.assertIn("--no-memory", k)
+        self.assertIn("--cwd", k)
+        self.assertTrue(str(kn.cwd).startswith("/tmp") or "aeo-isolate-" in str(kn.cwd))
         s = format_command(build_invocation("grok", "search", "q", cfg).argv)
         self.assertIn("--output-format json", s)
         self.assertIn("--verbatim", s)
+        self.assertIn("--sandbox strict", s)
         self.assertNotIn("streaming-json", s)
 
     def test_codex_flags(self):

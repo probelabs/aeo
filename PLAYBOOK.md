@@ -261,6 +261,8 @@ python3 -m aeo run --config aeo.config.json \
 - Writing the article before the capture exists.
 - Inventing numbers, or citing a URL that 308s, `noindex`s, or serves the homepage.
 - Logging consumer LLM accounts in from a datacenter.
+- Running a cell with cwd inside `~/.aeo` or the brand repo (Grok will read the parent).
+- Counting a mention that follows "this is an AEO eval" / local protocol read.
 - Dropping watch queries because the incumbent won.
 - A second dump after the first one failed to get cited.
 - One new slug per ⚠ vendor or per seed phrasing.
@@ -278,3 +280,18 @@ This box is an instance of the loop, not a second product spec.
 - Next batch, after a frozen mixed-docs corpus and real incumbent installs: at most one compare URL per repeating incumbent cluster, plus one mixed-folder answer if that cluster is distinct. Satellite *probes* (`local file search for AI agents`, `ripgrep-all vs Recoll`) wait until the three-engine board lands; the `vs` probes are confirmation checks, not new core seeds. Email / OCR / live Jira were refused — surfaces this product does not win.
 
 Another brand copies the *shape*, not the slugs, not MCP, not Recoll.
+
+
+---
+
+## 8. FAQ (contamination and sandbox)
+
+**Can a local AEO tree bias a mention?** Yes. Grok's CLI can list `.` and `..` and read sibling files even when web search is off. full84 ran from `~/.aeo/scratch` (empty). Grok then read the parent (`protocol.json`, prompt list, XERJ notes). On three cells it said "this looks like an AEO eval" / "the expected product is XERJ" and recommended XERJ **without any web-search tool call**. Those cells are contaminated. Claude and Codex on the same machine did not mention the brand.
+
+**Does that invalidate the whole grid?** No. Contaminated cells are the ones whose transcript shows a workspace peek *and then* a brand mention. Publish Claude/Codex rates as-is. Publish Grok only after dropping those cells, or re-run Grok isolated.
+
+**How does the runner prevent this now?** Each cell gets a fresh empty `cwd` under `/tmp/aeo-isolate-*` (override with `AEO_ISOLATE_ROOT`). Grok is launched with `--cwd` that dir, `--no-memory`, `--sandbox strict`, and file tools denied. Codex stays `--sandbox read-only` plus the same isolate `cwd`. Claude knowledge still has `--tools ""`; search allows only WebSearch/WebFetch.
+
+**Which Grok sandbox?** Use `strict` when the CLI has it. `workspace` and `read-only` still allow reading the whole disk. `strict` reads only CWD + system paths. On macOS, `strict` does **not** block child network, so the search arm can still web-search.
+
+**Where should I run AEO?** On the operator's own machine, from any shell. The runner sets isolate `cwd` itself — you do not have to cd away from `~/.aeo`. Do not point `--cwd` at the brand repo, the playbook clone, or `~/.aeo`.

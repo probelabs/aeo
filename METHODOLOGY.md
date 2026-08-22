@@ -18,14 +18,23 @@ Models often skip search, or search only to confirm vendors they already named. 
 | Engine | Knowledge | Search |
 | --- | --- | --- |
 | Claude | `claude -p --tools ""` | `--tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch --permission-mode bypassPermissions` plus a settings file that empties hooks. Never `--bare`. |
-| Grok | `grok -p --disable-web-search` | search on by default; `--output-format json --verbatim` (not streaming-json) |
+| Grok | `grok -p --disable-web-search --sandbox strict --cwd <isolate> --no-memory` | same plus `--output-format json --verbatim` (not streaming-json). `strict` + empty isolate cwd so it cannot read the AEO tree. On macOS `strict` does not block web search. |
 | Codex | `codex exec --ephemeral --skip-git-repo-check --sandbox read-only` without `--enable standalone_web_search` | same plus `--json --enable standalone_web_search` |
 
 User prompt text is the query plus one operational suffix:
 
-`Recommend existing tools or products if relevant. Do not write, edit, or execute files.`
+`Recommend existing tools or products if relevant. Do not write, edit, execute, or read files from disk. Do not inspect the working directory or parent folders.`
 
 Do not add the brand, rust, or extra stack words to the prompt.
+
+## Isolation
+
+Every cell runs with `cwd` set to a fresh empty directory under `/tmp` (`aeo-isolate-*`), never `~/.aeo` and never the brand repo. Listing `..` from that dir must not reveal protocol files, keyword lists, or playbooks.
+
+Grok defaults to **no** OS sandbox. Use `--sandbox strict` whenever the installed CLI supports it (read CWD + system paths only). `--sandbox workspace` and `--sandbox read-only` still allow reading the whole disk — those do **not** fix contamination. Codex already uses `--sandbox read-only`; still isolate `cwd`. Claude knowledge uses `--tools ""`; Claude search allows only `WebSearch,WebFetch`.
+
+A mention that follows "this looks like an AEO eval" / "I'll read the local protocol" is **contaminated**. Score it, then exclude it from the published rate. Do not treat it as a web or weights hit.
+
 
 ## Fields
 

@@ -67,4 +67,4 @@ Do not use this to run the full grid (that is [aeo](../aeo/SKILL.md)) or only to
 
 ## Anti-patterns (stop)
 
-Injecting the brand into core seeds. Treating `searched = false` as a harness bug. Treating confirmation as discovery. One slug per ⚠ or per seed. A second dump. `FAQPage` / `HowTo` / star-rating JSON-LD. Logging consumer LLM accounts from a VPS. Using `--prompt-id` as a roster filter.
+A mention after "this is an AEO eval" / reading `~/.aeo` is contaminated — isolate cwd, Grok `--sandbox strict`. Injecting the brand into core seeds. Treating `searched = false` as a harness bug. Treating confirmation as discovery. One slug per ⚠ or per seed. A second dump. `FAQPage` / `HowTo` / star-rating JSON-LD. Logging consumer LLM accounts from a VPS. Using `--prompt-id` as a roster filter.

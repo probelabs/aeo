@@ -66,13 +66,15 @@ def attach_aggregates(doc: dict[str, Any]) -> dict[str, Any]:
     return doc
 
 
-def write_document(doc: dict[str, Any], path: str | Path) -> Path:
+def write_document(doc: dict[str, Any], path: str | Path, *, overwrite: bool = False) -> Path:
     p = Path(path)
-    if p.exists():
+    if p.exists() and not overwrite:
         raise FileExistsError(f"refusing to overwrite existing evidence file: {p}")
     p.parent.mkdir(parents=True, exist_ok=True)
     attach_aggregates(doc)
-    p.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    tmp.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    tmp.replace(p)
     return p
 
 
