@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://probelabs.com/schema/aeo-cli-board-v1.json",
+  "title": "aeo-cli-board-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "scoreboard", "groups"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "aeo-cli-board-v1"
+    },
+    "run_id": { "type": "string", "minLength": 1 },
+    "scoreboard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "focus_mention_rate_search",
+        "focus_search_rate",
+        "watch_mention_rate",
+        "prebelief_count"
+      ],
+      "properties": {
+        "focus_mention_rate_search": { "type": "number", "minimum": 0, "maximum": 1 },
+        "focus_search_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "watch_mention_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "prebelief_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "rows"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": ["focus_product", "focus_search", "watch"]
+          },
+          "title": { "type": "string" },
+          "rows": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/BoardRow" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "ArmCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mentioned": { "type": "boolean" },
+        "searched": { "type": "boolean" },
+        "vendors_in_search_queries": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "EngineCells": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "knowledge": { "$ref": "#/$defs/ArmCell" },
+        "search": { "$ref": "#/$defs/ArmCell" }
+      }
+    },
+    "BoardRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prompt_id", "prompt_text", "call", "engines"],
+      "properties": {
+        "prompt_id": { "type": "string" },
+        "prompt_text": { "type": "string" },
+        "class": { "type": "string", "enum": ["watch", "focus"] },
+        "why": { "type": "string" },
+        "call": {
+          "type": "string",
+          "enum": ["win", "gap", "trap", "search-blind"]
+        },
+        "engines": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "claude": { "$ref": "#/$defs/EngineCells" },
+            "codex": { "$ref": "#/$defs/EngineCells" },
+            "grok": { "$ref": "#/$defs/EngineCells" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "schema_version": "aeo-cli-board-v1",
+  "run_id": "example-xerj-folder-search",
+  "scoreboard": {
+    "focus_mention_rate_search": 0.0,
+    "focus_search_rate": 0.0,
+    "watch_mention_rate": 0.0,
+    "prebelief_count": 1
+  },
+  "groups": [
+    {
+      "id": "focus_product",
+      "title": "Focus · product-fit",
+      "rows": []
+    },
+    {
+      "id": "focus_search",
+      "title": "Focus · search-likely",
+      "rows": []
+    },
+    {
+      "id": "watch",
+      "title": "Watch",
+      "rows": [
+        {
+          "prompt_id": "folder-by-content",
+          "prompt_text": "What's the best way to search through a folder of files by content?",
+          "call": "trap",
+          "engines": {
+            "claude": {
+              "knowledge": {
+                "mentioned": false
+              },
+              "search": {
+                "mentioned": false,
+                "searched": false,
+                "vendors_in_search_queries": []
+              }
+            },
+            "codex": {
+              "knowledge": {
+                "mentioned": false
+              },
+              "search": {
+                "mentioned": false,
+                "searched": true,
+                "vendors_in_search_queries": [
+                  "ripgrep",
+                  "recoll",
+                  "docfetcher"
+                ]
+              }
+            },
+            "grok": {
+              "knowledge": {
+                "mentioned": false
+              },
+              "search": {
+                "mentioned": false,
+                "searched": false,
+                "vendors_in_search_queries": []
+              }
+            }
+          },
+          "class": "watch",
+          "why": "knowledge_trap"
+        }
+      ]
+    }
+  ]
+}

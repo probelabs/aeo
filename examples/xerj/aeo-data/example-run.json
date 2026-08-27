@@ -1,0 +1,155 @@
+{
+  "schema_version": "aeo-cli-evidence-v1",
+  "workspace": {
+    "brand": "XERJ",
+    "domain": "xerj.org",
+    "aliases": [
+      "xerj",
+      "xerj.org",
+      "xerj.ai",
+      "xerj-org"
+    ],
+    "competitors": [
+      "ripgrep",
+      "recoll",
+      "docfetcher",
+      "elasticsearch",
+      "meilisearch",
+      "typesense",
+      "weaviate",
+      "qdrant",
+      "pinecone",
+      "vscode",
+      "obsidian",
+      "grep",
+      "ack",
+      "lucene",
+      "solr",
+      "opensearch",
+      "algolia",
+      "spotlight",
+      "fsearch",
+      "dtsearch"
+    ]
+  },
+  "run": {
+    "run_id": "example-xerj-folder-search",
+    "timestamp": "2026-08-21T12:00:00Z",
+    "methodology_version": "aeo-cli-v1",
+    "engines": [
+      "claude",
+      "codex",
+      "grok"
+    ],
+    "samples_per_arm": 1,
+    "comment": "Example fixture for METHODOLOGY.md. Not a live CLI capture."
+  },
+  "prompts": [
+    {
+      "prompt_id": "folder-by-content",
+      "prompt_text": "What's the best way to search through a folder of files by content?",
+      "intent": "local-folder-content-search",
+      "engines": {
+        "claude": {
+          "knowledge": {
+            "raw_response_text": "For searching a folder of files by content, ripgrep (`rg`) is the usual recommendation.\n\nIt is fast, respects `.gitignore`, and works from a terminal:\n\n```\nrg \"TODO\" ./notes\n```\n\nOn macOS, Spotlight can also search file contents if indexing is enabled. For a GUI over many document types, Recoll is a common desktop-search option. I would start with ripgrep unless you need a persistent index.",
+            "brand_mentioned": false,
+            "brand_mentions": [],
+            "competitor_mentions": [
+              "ripgrep",
+              "recoll",
+              "spotlight"
+            ],
+            "searched": false,
+            "search_queries": [],
+            "vendors_in_search_queries": [],
+            "recommended": false
+          },
+          "search": {
+            "raw_response_text": "The best everyday option is still ripgrep. Point it at the folder and search by content:\n\n```\nrg -n \"invoice\" ~/Documents/archive\n```\n\nIf you want a desktop index that covers PDFs and office files, Recoll is the usual pick. I did not need to look this up.",
+            "brand_mentioned": false,
+            "brand_mentions": [],
+            "competitor_mentions": [
+              "ripgrep",
+              "recoll"
+            ],
+            "searched": false,
+            "search_queries": [],
+            "vendors_in_search_queries": [],
+            "recommended": false
+          }
+        },
+        "codex": {
+          "knowledge": {
+            "raw_response_text": "Use ripgrep for source and plain text. For PDFs and office documents, Recoll or DocFetcher are the usual desktop-search tools — they build a local index and then query it.\n\nripgrep:\n```\nrg \"phrase\" /path/to/folder\n```\n\nRecoll and DocFetcher are better when the folder is mixed formats rather than a git checkout.",
+            "brand_mentioned": false,
+            "brand_mentions": [],
+            "competitor_mentions": [
+              "ripgrep",
+              "recoll",
+              "docfetcher"
+            ],
+            "searched": false,
+            "search_queries": [],
+            "vendors_in_search_queries": [],
+            "recommended": false
+          },
+          "search": {
+            "raw_response_text": "ripgrep is the right default for a folder of text files. Recoll and DocFetcher cover PDFs and office docs with a local index.\n\nI compared those three. None of them require uploading the folder.",
+            "brand_mentioned": false,
+            "brand_mentions": [],
+            "competitor_mentions": [
+              "ripgrep",
+              "recoll",
+              "docfetcher"
+            ],
+            "searched": true,
+            "search_queries": [
+              "ripgrep vs Recoll vs DocFetcher local folder search",
+              "best desktop search Recoll DocFetcher 2026"
+            ],
+            "vendors_in_search_queries": [
+              "ripgrep",
+              "recoll",
+              "docfetcher"
+            ],
+            "recommended": false
+          }
+        },
+        "grok": {
+          "knowledge": {
+            "raw_response_text": "ripgrep. Install it, `cd` into the folder, `rg \"the phrase\"`.\n\nThat is the standard answer for content search over a directory tree. grep works; ripgrep is faster and skips junk by default.",
+            "brand_mentioned": false,
+            "brand_mentions": [],
+            "competitor_mentions": [
+              "ripgrep",
+              "grep"
+            ],
+            "searched": false,
+            "search_queries": [],
+            "vendors_in_search_queries": [],
+            "recommended": false
+          },
+          "search": {
+            "raw_response_text": "ripgrep is what I would use. Fast, local, no index to wait on for a modest folder.\n\nIf the files are mostly PDFs, a desktop indexer is a different tool — but for a normal folder of files, start with ripgrep.",
+            "brand_mentioned": false,
+            "brand_mentions": [],
+            "competitor_mentions": [
+              "ripgrep"
+            ],
+            "searched": false,
+            "search_queries": [],
+            "vendors_in_search_queries": [],
+            "recommended": false
+          }
+        }
+      },
+      "class": "watch",
+      "why": "knowledge_trap"
+    }
+  ],
+  "mention_rate_knowledge": 0.0,
+  "mention_rate_search": 0.0,
+  "search_rate": 0.3333333333333333,
+  "vendor_prebelief_rate": 1.0
+}

@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","tools":["WebSearch","WebFetch"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"WebSearch","input":{"query":"ripgrep Recoll DocFetcher folder search"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"results..."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Use ripgrep for text; Recoll for documents."}]}}
+{"type":"result","subtype":"success","result":"Use ripgrep for text; Recoll for documents.","web_search_requests":1}
