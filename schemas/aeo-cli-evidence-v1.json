@@ -56,7 +56,11 @@
     "mention_rate_knowledge": { "type": "number", "minimum": 0, "maximum": 1 },
     "mention_rate_search": { "type": "number", "minimum": 0, "maximum": 1 },
     "search_rate": { "type": "number", "minimum": 0, "maximum": 1 },
-    "vendor_prebelief_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+    "vendor_prebelief_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "tokens_input": { "type": "number", "minimum": 0 },
+    "tokens_output": { "type": "number", "minimum": 0 },
+    "tokens_total": { "type": "number", "minimum": 0 },
+    "cost_usd": { "type": "number", "minimum": 0 }
   },
   "$defs": {
     "ArmResult": {
@@ -93,7 +97,19 @@
           "items": { "type": "string" }
         },
         "recommended": { "type": "boolean" },
-        "error": { "type": "string" }
+        "error": { "type": "string" },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "input_tokens": { "type": "integer", "minimum": 0 },
+            "output_tokens": { "type": "integer", "minimum": 0 },
+            "cache_read_tokens": { "type": "integer", "minimum": 0 },
+            "cache_write_tokens": { "type": "integer", "minimum": 0 },
+            "total_tokens": { "type": "integer", "minimum": 0 },
+            "cost_usd": { "type": "number", "minimum": 0 }
+          }
+        }
       }
     },
     "EngineArms": {

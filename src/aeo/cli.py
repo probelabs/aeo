@@ -11,6 +11,7 @@ from typing import Any
 
 from aeo import METHODOLOGY_VERSION
 from aeo.board import (
+    boards_dir_for,
     build_board,
     render_html,
     render_json,
@@ -92,11 +93,13 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--samples", type=int, help="Override samples_per_arm")
 
     p_rep = sub.add_parser("report", help="Print a table from evidence JSON")
-    p_rep.add_argument("path", nargs="?", help="Evidence file or data dir")
+    p_rep.add_argument("path", nargs="*", help="Evidence file(s) or data dir")
     p_rep.add_argument("--config", help="Used to find data_dir when path is omitted")
+    p_rep.add_argument("--html", action="store_true", help="Write a standalone HTML report (merges multiple files)")
+    p_rep.add_argument("--out", help="HTML output path (with --html). Default: <first-stem>-report.html")
 
     p_board = sub.add_parser("board", help="Decision board (markdown + agent JSON) from evidence")
-    p_board.add_argument("path", nargs="?", help="Evidence file or data dir")
+    p_board.add_argument("path", nargs="*", help="Evidence file(s) or data dir")
     p_board.add_argument("--config", help="Used to find data_dir when path is omitted")
     p_board.add_argument(
         "--format",
@@ -311,18 +314,29 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def _resolve_evidence_files(args: argparse.Namespace) -> list[Path]:
-    path: Path | None = Path(args.path) if getattr(args, "path", None) else None
-    if path is None:
+    raw = getattr(args, "path", None)
+    if isinstance(raw, (list, tuple)):
+        given = [Path(p) for p in raw if p]
+    elif raw:
+        given = [Path(raw)]
+    else:
+        given = []
+    explicit = bool(given)
+
+    if not given:
         try:
             cfg = _resolve_config(getattr(args, "config", None))
             root = Path(cfg.data_dir)
             if cfg.path and not root.is_absolute():
                 root = cfg.path.parent / root
-            path = root
+            given = [root]
         except FileNotFoundError:
-            path = Path("aeo-data")
-    files = iter_evidence_files(path)
-    if not files:
+            given = [Path("aeo-data")]
+
+    files: list[Path] = []
+    for path in given:
+        files.extend(iter_evidence_files(path))
+    if not files and not explicit:
         example = (
             Path(__file__).resolve().parents[2]
             / "examples"
@@ -340,6 +354,16 @@ def cmd_report(args: argparse.Namespace) -> int:
     if not files:
         print("no evidence files", file=sys.stderr)
         return 1
+    if getattr(args, "html", False):
+        from aeo.html_report import render_html_report
+
+        docs = [load_document(f) for f in files]
+        out = Path(args.out) if getattr(args, "out", None) else files[0].with_name(f"{files[0].stem}-report.html")
+        html = render_html_report(docs, generated_from_files=[f.name for f in files])
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(html, encoding="utf-8")
+        print(out)
+        return 0
     for i, f in enumerate(files):
         if i:
             print()
@@ -365,29 +389,43 @@ def cmd_board(args: argparse.Namespace) -> int:
         write_formats = ("md", "json")
     stdout_fmt = fmt or "md"
     out_dir = Path(args.out_dir) if args.out_dir else None
+    docs = [load_document(f) for f in files]
+    disk_formats = tuple(x for x in write_formats if x != "html")
     printed = 0
-    for f in files:
-        doc = load_document(f)
+    for f, doc in zip(files, docs):
         board = build_board(doc)
         brand_terms = _brand_terms(doc)
         written = write_board_files(
             board,
             f,
             brand_terms=brand_terms,
-            formats=write_formats,
+            formats=disk_formats,
             out_dir=out_dir,
+            doc=doc,
         )
         for kind, path in written.items():
             print(f"wrote {path}", file=sys.stderr)
+        if stdout_fmt == "html":
+            continue
         if printed:
             print()
         if stdout_fmt == "json":
             print(render_json(board), end="")
-        elif stdout_fmt == "html":
-            print(render_html(board, brand_terms=brand_terms), end="")
         else:
             print(render_markdown(board, brand_terms=brand_terms), end="")
         printed += 1
+    if "html" in write_formats:
+        from aeo.html_report import merge_docs, render_html_report
+
+        html = render_html_report(docs, generated_from_files=[f.name for f in files])
+        dest = out_dir or boards_dir_for(files[0])
+        dest.mkdir(parents=True, exist_ok=True)
+        run_id = (merge_docs(docs).get("run") or {}).get("run_id") or files[0].stem
+        path = dest / f"{run_id}.html"
+        path.write_text(html, encoding="utf-8")
+        print(f"wrote {path}", file=sys.stderr)
+        if stdout_fmt == "html":
+            print(html, end="")
     return 0
 
 

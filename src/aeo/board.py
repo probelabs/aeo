@@ -299,60 +299,28 @@ def render_markdown(board: dict[str, Any], *, brand_terms: set[str] | None = Non
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_html(board: dict[str, Any], *, brand_terms: set[str] | None = None) -> str:
-    brand_terms = brand_terms or set()
-    sb = board.get("scoreboard") or {}
-    run_id = html.escape(str(board.get("run_id") or "run"))
-    parts = [
-        "<!DOCTYPE html>",
-        '<html lang="en"><head><meta charset="utf-8">',
-        f"<title>Board · {run_id}</title>",
-        "<style>",
-        "body{font:14px/1.4 system-ui,sans-serif;margin:24px;color:#111}",
-        "table{border-collapse:collapse;margin:12px 0 24px;width:100%}",
-        "th,td{border:1px solid #ddd;padding:6px 8px;text-align:left}",
-        "th{background:#f6f6f6;font-weight:600}",
-        "h1{font-size:20px}h2{font-size:16px;margin-top:28px}",
-        ".score{margin:0;padding:0} .score li{margin:2px 0}",
-        ".legend{color:#555;font-size:12px}",
-        ".blurb{color:#555;margin:0 0 8px}",
-        "</style></head><body>",
-        f"<h1>Board · {run_id}</h1>",
-        "<ul class='score'>",
-        f"<li>Focus mention rate (search arm): {sb.get('focus_mention_rate_search', 0):.2f}</li>",
-        f"<li>Focus search rate: {sb.get('focus_search_rate', 0):.2f}</li>",
-        f"<li>Watch mention rate: {sb.get('watch_mention_rate', 0):.2f}</li>",
-        f"<li>Prebelief searches (⚠): {sb.get('prebelief_count', 0)}</li>",
-        "</ul>",
-    ]
-    headers = [
-        "Query", "Claude K", "Claude S", "Claude 🔍",
-        "Codex K", "Codex S", "Codex 🔍",
-        "Grok K", "Grok S", "Grok 🔍", "Prebelief", "Call",
-    ]
-    blurb = {g["id"]: g["blurb"] for g in GROUPS}
-    for group in board.get("groups") or []:
-        rows = group.get("rows") or []
-        if not rows:
-            continue
-        parts.append(f"<h2>{html.escape(group.get('title') or '')}</h2>")
-        parts.append(f"<p class='blurb'>{html.escape(blurb.get(group.get('id'), ''))}</p>")
-        parts.append("<table><thead><tr>" + "".join(f"<th>{html.escape(h)}</th>" for h in headers) + "</tr></thead><tbody>")
-        for row in rows:
-            ck, cs, cq = _engine_marks(row, "claude", brand_terms)
-            xk, xs, xq = _engine_marks(row, "codex", brand_terms)
-            gk, gs, gq = _engine_marks(row, "grok", brand_terms)
-            cells = [
-                _short(row.get("prompt_text") or row.get("prompt_id") or ""),
-                ck, cs, cq, xk, xs, xq, gk, gs, gq,
-                _short(_prebelief_cell(row), 28),
-                row.get("call") or "",
-            ]
-            parts.append("<tr>" + "".join(f"<td>{html.escape(c)}</td>" for c in cells) + "</tr>")
-        parts.append("</tbody></table>")
-    parts.append(f"<p class='legend'>{html.escape(LEGEND)}</p>")
-    parts.append("</body></html>")
-    return "\n".join(parts) + "\n"
+def render_html(
+    board: dict[str, Any],
+    *,
+    brand_terms: set[str] | None = None,
+    doc: dict[str, Any] | None = None,
+    docs: list[dict[str, Any]] | None = None,
+) -> str:
+    """Full HTML report. Prefer evidence docs; board-only callers get the same renderer via a stub."""
+    from aeo.html_report import render_html_report
+
+    if docs:
+        return render_html_report(docs)
+    if doc is not None:
+        return render_html_report(doc)
+    _ = brand_terms
+    stub = {
+        "schema_version": "aeo-cli-evidence-v1",
+        "workspace": {"brand": "", "domain": "", "aliases": []},
+        "run": {"run_id": board.get("run_id") or "", "engines": []},
+        "prompts": [],
+    }
+    return render_html_report(stub)
 
 
 def render_json(board: dict[str, Any]) -> str:
@@ -374,6 +342,8 @@ def write_board_files(
     brand_terms: set[str] | None = None,
     formats: tuple[str, ...] = ("md", "json"),
     out_dir: Path | None = None,
+    doc: dict[str, Any] | None = None,
+    docs: list[dict[str, Any]] | None = None,
 ) -> dict[str, Path]:
     dest = out_dir or boards_dir_for(evidence_path)
     dest.mkdir(parents=True, exist_ok=True)
@@ -389,6 +359,6 @@ def write_board_files(
         written["json"] = p
     if "html" in formats:
         p = dest / f"{run_id}.html"
-        p.write_text(render_html(board, brand_terms=brand_terms), encoding="utf-8")
+        p.write_text(render_html(board, brand_terms=brand_terms, doc=doc, docs=docs), encoding="utf-8")
         written["html"] = p
     return written

@@ -35,6 +35,7 @@ class ParsedRun:
     raw_response_text: str = ""
     searched: bool = False
     search_queries: list[str] = field(default_factory=list)
+    usage: dict[str, Any] | None = None
 
     def add_query(self, q: str) -> None:
         q = (q or "").strip()
@@ -238,6 +239,103 @@ def _dedupe_keep_longest(parts: list[str]) -> str:
     return kept[0]
 
 
+
+def _as_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, (int, float)):
+        return int(value)
+    return 0
+
+
+def _as_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _usage_from_mapping(obj: dict[str, Any]) -> dict[str, Any]:
+    usage = obj.get("usage") if isinstance(obj.get("usage"), dict) else {}
+    model = obj.get("modelUsage") if isinstance(obj.get("modelUsage"), dict) else {}
+    # First modelUsage entry is Claude's per-model rollup; prefer top-level usage.
+    mu = {}
+    if model:
+        first = next(iter(model.values()), None)
+        if isinstance(first, dict):
+            mu = first
+    inp = _as_int(
+        usage.get("input_tokens")
+        or usage.get("prompt_tokens")
+        or usage.get("inputTokens")
+        or mu.get("inputTokens")
+    )
+    out = _as_int(
+        usage.get("output_tokens")
+        or usage.get("completion_tokens")
+        or usage.get("outputTokens")
+        or mu.get("outputTokens")
+    )
+    cache_read = _as_int(
+        usage.get("cache_read_input_tokens")
+        or usage.get("cacheReadInputTokens")
+        or mu.get("cacheReadInputTokens")
+    )
+    cache_write = _as_int(
+        usage.get("cache_creation_input_tokens")
+        or usage.get("cacheCreationInputTokens")
+        or mu.get("cacheCreationInputTokens")
+    )
+    cost = _as_float(obj.get("total_cost_usd"))
+    if cost is None:
+        cost = _as_float(usage.get("total_cost_usd") or usage.get("cost_usd") or mu.get("costUSD"))
+    blob: dict[str, Any] = {
+        "input_tokens": inp,
+        "output_tokens": out,
+        "cache_read_tokens": cache_read,
+        "cache_write_tokens": cache_write,
+        "total_tokens": inp + out + cache_read + cache_write,
+    }
+    if cost is not None:
+        blob["cost_usd"] = cost
+    return blob
+
+
+def _add_usage(acc: dict[str, Any] | None, piece: dict[str, Any]) -> dict[str, Any]:
+    acc = acc or {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "total_tokens": 0,
+    }
+    for k in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "total_tokens"):
+        acc[k] = acc.get(k, 0) + piece.get(k, 0)
+    if "cost_usd" in piece:
+        acc["cost_usd"] = round(float(acc.get("cost_usd") or 0) + float(piece["cost_usd"]), 6)
+    return acc
+
+
+def extract_usage(docs: list[Any]) -> dict[str, Any] | None:
+    """Pull token/cost totals from CLI JSON. Prefer a final result row; else sum usage objects."""
+    acc: dict[str, Any] | None = None
+    result_usage = None
+    for doc in docs:
+        if not isinstance(doc, dict):
+            continue
+        if doc.get("type") == "result" and (isinstance(doc.get("usage"), dict) or "total_cost_usd" in doc):
+            result_usage = _usage_from_mapping(doc)
+        if isinstance(doc.get("usage"), dict) and doc.get("type") != "result":
+            acc = _add_usage(acc, _usage_from_mapping(doc))
+    picked = result_usage or acc
+    if not picked:
+        return None
+    if not any(picked.get(k) for k in ("input_tokens", "output_tokens", "cost_usd", "cache_read_tokens")):
+        return None
+    return picked
+
+
 def parse_claude(raw: str) -> ParsedRun:
     docs = parse_json_documents(raw)
     parsed = ParsedRun()
@@ -302,4 +400,7 @@ PARSERS = {
 
 def parse_engine(engine: str, raw: str) -> ParsedRun:
     fn = PARSERS.get(engine, parse_claude)
-    return fn(raw)
+    parsed = fn(raw)
+    docs = parse_json_documents(raw)
+    parsed.usage = extract_usage(docs)
+    return parsed
