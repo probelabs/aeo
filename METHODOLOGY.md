@@ -123,3 +123,9 @@ Walk-through of [`examples/xerj/aeo-data/example-run.json`](examples/xerj/aeo-da
 **Grok knowledge / search.** ripgrep. No XERJ. Search arm did not search.
 
 Read left to right: nobody mentioned the brand; two engines never used search; one engine searched only names it already had. Rates on the document (`mention_rate_* = 0`, `search_rate` low, `vendor_prebelief_rate = 1`) are a view of that. The samples are the source of truth.
+
+## After the numbers
+
+This file stops at measurement. After a full-grid zero (or near-zero) mention, the next action is not "write more articles." Reason with [PLAYBOOK.md](PLAYBOOK.md) §9 (live URL check, confirmation vs discovery vs search-blind, one URL per cluster, waves). If claimed URLs already 200 as themselves and mentions stay 0, continue to §11 (retrieval debug) before drafting. A human write-up of a run is incomplete unless it matches §10. Do not invent a rate to fill a cell.
+
+Human view of the same payload: `python3 -m aeo board <evidence.json>` (markdown + agent JSON; optional `--format html`) plus this evidence JSON.

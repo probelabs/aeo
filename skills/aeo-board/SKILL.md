@@ -37,4 +37,6 @@ Do **not** open consumer LLM websites. This skill only reads evidence JSON produ
 
 `⚠` = confirmation search (vendors already in the tool-call strings, brand was not). Not discovery.
 
-Full rules: [METHODOLOGY.md](../../METHODOLOGY.md). Measurement skill: [aeo](../aeo/SKILL.md). Turning a board into articles: [aeo-playbook](../aeo-playbook/SKILL.md).
+Full rules: [METHODOLOGY.md](../../METHODOLOGY.md). Measurement skill: [aeo](../aeo/SKILL.md). Turning a board into articles: [aeo-playbook](../aeo-playbook/SKILL.md). Zero mentions after pages are already live: [PLAYBOOK.md](../../PLAYBOOK.md) §11, not more articles.
+
+A human run write-up is not the board itself. It must follow [PLAYBOOK.md](../../PLAYBOOK.md) §10 (method, live URL check, per-engine×arm table, confirmation vs discovery, search-blind seeds, cannibalize map, waves, refuse list, `--only-id` re-run). After a zero-mention grid, reason with §9 before drafting. `--format html` is a view of the **board**, not a substitute for that artifact. Merge engine files with `python3 -m aeo report --html --out report.html a.json b.json`.

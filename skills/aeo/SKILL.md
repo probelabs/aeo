@@ -93,6 +93,8 @@ Validates against `schemas/aeo-cli-evidence-v1.json`.
 
 Full write-up and a walkthrough of the XERJ fixture: [METHODOLOGY.md](../../METHODOLOGY.md). Which pages to write and the measure→ship→re-run loop: [aeo-playbook](../aeo-playbook/SKILL.md) / [PLAYBOOK.md](../../PLAYBOOK.md).
 
+After a full-grid zero (or near-zero) mention, do not start with more articles. `curl` claimed URLs first, split confirmation / discovery / search-blind, map seeds onto existing slugs, then follow [PLAYBOOK.md](../../PLAYBOOK.md) §9–10. If those URLs already 200 as themselves and mentions stay 0, run §11 (retrieval debug: live vs not-indexed vs skipped) before any draft — Search Console / Bing Webmaster / IndexNow, not a third pile of slugs. Knowledge-arm 0 on an unknown brand is expected; keep measuring that arm. Human view of a run: `python3 -m aeo board <file>` (markdown + JSON; optional `--format html`) plus the evidence JSON. Merge engine files with `python3 -m aeo report --html --out report.html a.json b.json`.
+
 ## Raw flags (if the wrapper is blocked)
 
 - Claude knowledge: `claude -p --tools ""` — never `--bare`
