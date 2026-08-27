@@ -1,103 +1,104 @@
 # aeo
 
-Local-CLI AEO measurement. Two arms — knowledge vs search — for Claude Code, Codex, and Grok.
+Measure whether coding agents mention your product.
 
-Given a brand, aliases, competitors, and a query list, run the same question on each engine with search forced off and with search allowed. Record whether the brand is mentioned, whether the model actually searched, the exact search tool-call strings, and which vendor names already appeared in those queries.
+`aeo` asks Claude Code, Codex, and Grok the same realistic questions twice: once with search forced off, once with search allowed. It records the mention, whether they actually searched, the **literal** strings they typed into the search box, and which competitor names were already in those strings.
 
-This is not Gemini grounding or AI Overviews. It measures local coding-agent CLIs.
+That is the whole product. It is not Gemini grounding, not Google AI Overviews, and not a login to claude.ai.
 
-See [METHODOLOGY.md](METHODOLOGY.md) for the measurement spec and [PLAYBOOK.md](PLAYBOOK.md) for which pages to write, the measure→ship→re-run loop, and retrieval debug when live pages still get zero mentions (Search Console / indexing, not more slugs). Schemas: [aeo-cli-config-v1](schemas/aeo-cli-config-v1.json), [aeo-cli-evidence-v1](schemas/aeo-cli-evidence-v1.json). Skills: [aeo](skills/aeo/SKILL.md), [aeo-board](skills/aeo-board/SKILL.md), [aeo-playbook](skills/aeo-playbook/SKILL.md).
+[Methodology](METHODOLOGY.md) · [Playbook](PLAYBOOK.md) · [Skills](skills/)
+
+## Why two arms
+
+A mention from weights and a mention after a web search are different facts.
+
+| Arm | What you learn |
+| --- | --- |
+| **Knowledge** | What the model already believes. A new brand almost never wins this path in year one. Measure it anyway. |
+| **Search** | Whether they searched, and what they typed. Most "search" is **confirmation** of an incumbent they already named, not discovery of you. |
+
+If they never type your name, and your page is not in the backend they used, writing more blog posts will not change the grid. The [playbook](PLAYBOOK.md) is the operating loop for that: measure, ship one URL per cluster, check the page is live *and indexed*, re-run only the affected seeds.
 
 ## Install
 
-Python 3.11+. Stdlib only. `jsonschema` is optional for tests.
+Python 3.11+. Stdlib only. You need `claude`, `codex`, and/or `grok` on **your** machine. Do not run those CLIs from a VPS or datacenter.
 
 ```bash
 pip install -e .
-# or, from a checkout:
+# or
 PYTHONPATH=src python3 -m aeo --help
 ```
 
-## Run
+## Quick start
 
 ```bash
+python3 -m aeo init --brand Acme --domain acme.example --out aeo.config.json
+# or copy the XERJ example roster:
 python3 -m aeo init --from-example xerj --out aeo.config.json
+
 python3 -m aeo run --config aeo.config.json --engine all --arm both
-python3 -m aeo run --config aeo.config.json --prompt "What's the best way to search through a folder of files by content?"
-python3 -m aeo run --config aeo.config.json --engine claude --arm knowledge --dry-run
-python3 -m aeo report examples/xerj/aeo-data/example-run.json
-python3 -m aeo board examples/xerj/aeo-data/example-run.json
-python3 -m aeo run --config examples/xerj/aeo.config.json --class focus --dry-run
+python3 -m aeo board aeo-data/runs/<run_id>.json
+python3 -m aeo report --html --out report.html aeo-data/runs/<run_id>.json
 ```
 
-`--arm knowledge|search|both` (default `both`). `--engine claude|codex|grok|all`. `--class watch|focus|all` (default `all`). `--dry-run` prints the exact CLI command and exits.
+`--dry-run` prints the exact `claude` / `codex` / `grok` command and exits. `--only-id` re-runs one roster seed. `--samples N` repeats that invocation (default `n=1`; local CLIs are slow).
 
-`aeo board` writes `aeo-data/boards/<run_id>.md` (humans) and `.json` (agents). `--format md|html|json` selects stdout.
+Never put the brand, a stack word, or an incumbent into a **core** prompt. If the model injects those into its own search call, that is a finding.
 
-Evidence is append-only: each run writes a new `aeo-data/runs/<run_id>.json`. Raw samples are the source of truth; rates on a document are views.
+## What a run gives you
 
-Default `samples_per_arm` is 1. Local CLIs are slow. Use `--samples N` when you want jitter.
+Each cell is isolated in a fresh empty `/tmp/aeo-isolate-*` directory so Grok cannot read your playbook and "discover" the brand.
 
-Never add the brand, rust, or extra stack words to the user prompt. The runner only appends:
+| Artifact | What it is |
+| --- | --- |
+| `aeo-data/runs/<run_id>.json` | Raw evidence. Source of truth. [Schema](schemas/aeo-cli-evidence-v1.json). |
+| `aeo board` | Decision board: `win` / `gap` / `search-blind` / `trap`, plus markdown + agent JSON. |
+| `aeo report --html` | Compact self-contained report. Merges several engine files. |
 
-`Recommend existing tools or products if relevant. Do not write, edit, or execute files.`
+Per arm the runner stores: `brand_mentioned`, `searched`, `search_queries` (verbatim), `vendors_in_search_queries`, and token/spend when the CLI JSON has it.
 
-## Raw CLI flags
+## After the numbers
 
-Use these directly if the wrapper is blocked. Do not pass `--bare` to Claude (it skips keychain).
+A zero-mention grid is not a prompt to write fifty articles.
 
-**Claude knowledge** — `claude -p` with `--tools ""`:
+1. `curl` every URL you claim is live. Homepage-sized 200s do not count.
+2. Split cells: confirmation vs discovery vs search-blind.
+3. One URL per cluster, only if you can publish a run you actually did.
+4. If the pages are already live and mentions stay 0, it is a **retrieval** problem. [Playbook §11](PLAYBOOK.md#11-retrieval-debug-pages-live-mentions-still-0): Search Console, Bing Webmaster, IndexNow. Not more slugs.
 
-```bash
-claude -p --tools "" --output-format json -- "PROMPT"
-```
-
-**Claude search** — search tools plus a settings file that empties hooks (`src/aeo/data/claude-empty-hooks.json`):
-
-```bash
-claude -p \
-  --tools WebSearch,WebFetch \
-  --allowedTools WebSearch,WebFetch \
-  --permission-mode bypassPermissions \
-  --settings src/aeo/data/claude-empty-hooks.json \
-  --output-format stream-json --verbose -- "PROMPT"
-```
-
-**Grok knowledge:**
-
-```bash
-grok -p --disable-web-search -- "PROMPT"
-```
-
-**Grok search** — search on by default. `--output-format json --verbatim` (not streaming-json):
-
-```bash
-grok -p --output-format json --verbatim -- "PROMPT"
-```
-
-**Codex knowledge** — no `--enable standalone_web_search`:
-
-```bash
-codex exec --ephemeral --skip-git-repo-check --sandbox read-only -- "PROMPT"
-```
-
-**Codex search:**
-
-```bash
-codex exec --ephemeral --skip-git-repo-check --sandbox read-only \
-  --json --enable standalone_web_search -- "PROMPT"
-```
+Portable agent skills live in [`skills/`](skills/): [aeo](skills/aeo/SKILL.md) (run), [aeo-board](skills/aeo-board/SKILL.md) (read), [aeo-playbook](skills/aeo-playbook/SKILL.md) (decide).
 
 ## Example
 
-[examples/xerj](examples/xerj) is the first workspace (XERJ), not a hard-coded only-brand. Walkthrough of the fixture: [How to read a run](METHODOLOGY.md#how-to-read-a-run).
+[`examples/xerj`](examples/xerj) is a real workspace (84 seeds, watch vs focus), not a hard-coded only-brand. Walkthrough of the fixture: [How to read a run](METHODOLOGY.md#how-to-read-a-run).
 
 ## Tests
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v
-# optional:
-pip install -e '.[test]'
+pip install -e '.[test]'   # optional, pulls jsonschema
+```
+
+## Raw CLI flags
+
+Use these if the wrapper is blocked. Never pass `--bare` to Claude (it skips keychain).
+
+```bash
+# Claude
+claude -p --tools "" --output-format json -- "PROMPT"
+claude -p --tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch \
+  --permission-mode bypassPermissions \
+  --settings src/aeo/data/claude-empty-hooks.json \
+  --output-format stream-json --verbose -- "PROMPT"
+
+# Grok
+grok -p --disable-web-search --sandbox strict --cwd /tmp/aeo-isolate --no-memory -- "PROMPT"
+grok -p --output-format json --verbatim --sandbox strict --cwd /tmp/aeo-isolate --no-memory -- "PROMPT"
+
+# Codex
+codex exec --ephemeral --skip-git-repo-check --sandbox read-only -- "PROMPT"
+codex exec --ephemeral --skip-git-repo-check --sandbox read-only \
+  --json --enable standalone_web_search -- "PROMPT"
 ```
 
 ## License
