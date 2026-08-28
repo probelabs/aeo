@@ -85,7 +85,7 @@ After a full-grid zero (or near-zero) mention, do **not** start with "write more
 8. Mention without search, or a transcript that says "this is an AEO eval," is contaminated. Isolate cwd. Do not publish that rate as a win.
 9. Nobody typing the brand into the search box is a first-class finding. Record it.
 10. Do not merge / deploy a dump of unpublished pages that 200 the homepage.
-11. If Wave 0 already passed and mentions are still 0, **stop writing**. Run [PLAYBOOK.md](../../PLAYBOOK.md) §11 (live vs not-indexed vs skipped). Verify Search Console + Bing Webmaster + IndexNow. Re-check `site:` before any new slug.
+11. If Wave 0 already passed and mentions are still 0, **stop writing**. Run [PLAYBOOK.md](../../PLAYBOOK.md) §11 (live vs not-indexed vs skipped vs consensus). Verify Search Console + Bing Webmaster + IndexNow + Cloudflare AI Crawl Control. Re-check `site:` before any new slug. If the compare is indexed and still loses to the incumbent's third-party docs, that is Gate E (off-site mention), not a new `/answers` twin.
 
 Waves (unpublished PR + measured grid): **0** existing slugs 200 as themselves, sitemap, own canonical (merge-blocking; new drafts do not change AEO until then). If Wave 0 is already true and mentions stay 0, §11 — not Wave 2/3 content. **1** one compare URL per repeating confirmation incumbent you can bake off; shared frozen corpus; kill if the incumbent finds more in-family evidence. **2** EDIT existing slugs for search-blind / mismatched H1s; no new paths; no invented numbers. **3** remaining confirmation incumbents, then honesty pages only after capture; refuse surfaces you do not ship. If it could be written without running the product, it does not ship.
 
@@ -98,6 +98,8 @@ Waves (unpublished PR + measured grid): **0** existing slugs 200 as themselves, 
 - **Compare says "no benchmark was run"?** Wave 0 ≠ Wave 1. Edit that URL after a frozen corpus.
 - **VPS Bing/Google HTML as proof?** No. Datacenter scrapes lie. Use the cell's own search tool or Search Console coverage.
 - **"All the SEO"?** Search Console + Bing Webmaster + sitemap submit + IndexNow. Stop until `site:` returns the slugs.
+- **Cloudflare / GPTBot?** `robots.txt` `Allow: /` is not enough if CF "Block AI bots" is on. `curl -A` `OAI-SearchBot` / `ChatGPT-User` / `Claude-SearchBot` / `PerplexityBot`. Open the dashboard.
+- **YouTube / Ahrefs 0.737 / Brand Radar?** Off-site mention is Gate E after the compare already loses. Not a reason to mint slugs, rewrite seeds, or measure ChatGPT web / AI Overviews with this skill.
 - **Mention after "this is an AEO eval"?** Contaminated. Isolate cwd. Do not publish the rate.
 
 ## Write-up checklist
@@ -105,7 +107,7 @@ Waves (unpublished PR + measured grid): **0** existing slugs 200 as themselves, 
 A run summary for humans is not done if any item is missing. Recompute every number from evidence JSON + live `curl` the same day. Do not invent a number — say the file was not opened.
 
 1. Method (two-arm, verbatim seeds, isolate cwd, engines, n).
-2. Live URL check of claimed pages + sitemap (status, bytes vs homepage, canonical). If that already passes, Gate B (`site:` / branded / literal fan-out) and console / IndexNow status ([PLAYBOOK.md](../../PLAYBOOK.md) §11).
+2. Live URL check of claimed pages + sitemap (status, bytes vs homepage, canonical). If that already passes, Gate B (`site:` / branded / literal fan-out), consoles + IndexNow + CF AI-bot status, and whether Gate E (consensus) applies ([PLAYBOOK.md](../../PLAYBOOK.md) §11).
 3. Mention / search / prebelief per engine × arm. Isolate contaminated cells; do not blend them into the win rate.
 4. Confirmation vs discovery counts and vendor fan-out (`search_queries` / `vendors_in_search_queries`), including "typed brand into the box?"
 5. Search-blind focus ids (verbatim seeds).

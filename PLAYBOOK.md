@@ -4,7 +4,7 @@ How to turn a two-arm CLI run into pages that coding agents can actually cite.
 
 [METHODOLOGY.md](METHODOLOGY.md) is the measurement spec (arms, fields, flags, mention rules). This document is the operating loop. The portable skill is [skills/aeo-playbook/SKILL.md](skills/aeo-playbook/SKILL.md). After a zero-mention grid, reason with §9 before drafting. After claimed pages are already live and mentions stay 0, run §11 before writing anything. A human write-up is incomplete without §10.
 
-Nouns: **brand**, **incumbent**, **roster**, **watch**, **focus**, **fan-out**, **confirmation**, **discovery**, **cell**, **board**, **call**. The brand is whatever `aeo.config.json` names. XERJ appears only in a marked example at the end.
+Nouns: **brand**, **incumbent**, **roster**, **watch**, **focus**, **fan-out**, **confirmation**, **discovery**, **consensus**, **cell**, **board**, **call**. The brand is whatever `aeo.config.json` names. XERJ appears only in a marked example at the end.
 
 This playbook does **not** measure Gemini grounding, Google AI Overviews, or consumer chat websites. Do not log into those from a datacenter or VPS. Run `claude`, `codex`, and `grok` on the operator's own machine. Never pass `--bare` to Claude (it skips keychain). Raw flags: [skills/aeo/SKILL.md](skills/aeo/SKILL.md).
 
@@ -305,7 +305,11 @@ Finished 504-cell grid (84 seeds × 3 engines × 2 arms, 1 sample). Isolation ru
 
 **Where should I run AEO?** On the operator's own machine, from any shell. The runner sets isolate `cwd` itself — you do not have to cd away from `~/.aeo`. Do not point `--cwd` at the brand repo, the playbook clone, or `~/.aeo`.
 
-**The pages 200 as themselves and sit in the sitemap. Mentions are still 0. Write more articles?** No. Run §11. The miss is retrieval (not in that backend, or ranked under the incumbent) or a compare that still has no bake-off. Extra markdown is invisible until `site:<domain>/<section>` returns the live slugs.
+**The pages 200 as themselves and sit in the sitemap. Mentions are still 0. Write more articles?** No. Run §11. The miss is retrieval (not in that backend, or ranked under the incumbent), a compare that still has no bake-off, or a **consensus** gap (the web only talks about the incumbent). Extra markdown is invisible until `site:<domain>/<section>` returns the live slugs.
+
+**Ahrefs / Brand Radar / "YouTube mentions correlate 0.737" — should we film and buy a visibility tool?** This skill still measures local coding-agent CLIs, not ChatGPT web or Google AI Overviews. Off-site mention (YouTube title/transcript, editorial, UGC) is a real *lever* when Gate D already lost to the incumbent's own docs. It is not a reason to mint `/answers` twins, rewrite core seeds with modifiers, or replace the two-arm CLI with a consumer AIO dashboard. Treat published correlations as correlations.
+
+**Should we block GPTBot in robots.txt?** Do not add a `Disallow` for retrieval crawlers you want citations from (`OAI-SearchBot`, `ChatGPT-User`, `Claude-SearchBot`, `PerplexityBot`, Bingbot). A site-wide `User-agent: * / Allow: /` is enough on paper. Cloudflare "Block AI bots" (default on new zones since 2025-07) is the silent one — it is not in `robots.txt`. Check the dashboard and `curl -A` those UAs (§11 Gate C).
 
 **How do I tell homepage-clone vs live vs missing?** `curl` the homepage and the candidate. Compare status, bytes, ETag, `<title>` / H1, and canonical. Same ETag or homepage-sized body = clone (Wave 0 still missing). A 404 on a *guessed* slug is not "the cluster is missing" if a different slug is in the sitemap or `answers/index.json`. Always start from the sitemap, not from seed ids.
 
@@ -337,7 +341,7 @@ After a full-grid zero (or near-zero) mention, do **not** respond with "write mo
 1. First `curl` every URL you claim is live. A 200 that is homepage-sized or canonicals to `/` means the search backend cannot retrieve the page. Extra markdown in an unpublished branch is invisible to the search arm.
 2. Knowledge-arm 0 on an unknown brand is expected year one. Do not spend the content budget trying to become prior. Keep measuring the arm. Content budget = search-arm retrieval against incumbents the models already type.
 3. High search rate + 0 mentions is usually "our URL is not in that backend" or "they confirmed an incumbent and the incumbent's docs won" — not "we need dozens of new slugs."
-4. Split search-arm cells: **confirmation** (vendor already in the tool-call string) vs **discovery** (category string, no configured vendor) vs **search-blind** (`searched=false`). Confirmation does not get you cited via a category essay. It needs a live compare URL that can beat the incumbent's own page on the *same* backend.
+4. Split search-arm cells: **confirmation** (vendor already in the tool-call string) vs **discovery** (category string, no configured vendor) vs **search-blind** (`searched=false`). Confirmation does not get you cited via a category essay. It needs a live compare URL that can beat the incumbent's own page on the *same* backend — and, if that page already loses to a pile of third-party incumbent write-ups, a **consensus** problem (off-site mentions), not a new slug. See §11 Gate E.
 5. Search-blind focus ids: do not mint twins. EDIT the existing capability URL's H1 / FAQ / `agent_prompt` so *if* they later search, the phrasing matches training-weight answers. Changing the product or accepting weights is also valid; an article will not be retrieved if nobody searches.
 6. Map every seed to an existing shipped or in-PR slug before minting. If 100% cannibalize, new slugs are only clusters the tree does not own (a new incumbent compare, a distinct export shape, a surface you actually ship).
 7. One URL per cluster, not per seed and not per ⚠ vendor.
@@ -360,7 +364,7 @@ After a full-grid zero (or near-zero) mention, do **not** respond with "write mo
 When asked to summarize a run for humans (PR comment, report, memo), the artifact **must** include the items below, **in this order**. Every number is recomputed from evidence JSON + live `curl` the same day. If a cell cannot be filled, say the file was not opened — do not invent a number.
 
 1. **Method** — two-arm, verbatim seeds, isolate cwd, which engines, n.
-2. **Live URL check** of claimed pages + sitemap (status, bytes vs homepage, canonical). If those already pass and mentions are still 0, also record Gate B (`site:` / branded / literal fan-out) and whether consoles + IndexNow are verified (§11).
+2. **Live URL check** of claimed pages + sitemap (status, bytes vs homepage, canonical). If those already pass and mentions are still 0, also record Gate B (`site:` / branded / literal fan-out), consoles + IndexNow + Cloudflare AI-bot status, and whether Gate E (consensus) applies (§11).
 3. **Mention / search / prebelief** table per engine × arm. Flag contaminated cells separately; do not blend them into the win rate.
 4. **Confirmation vs discovery** counts and the actual vendor fan-out (from `search_queries` / `vendors_in_search_queries`), including "typed brand into the box?"
 5. **Search-blind focus ids** (verbatim seeds).
@@ -433,7 +437,16 @@ Operator verifies these on their own accounts (do not log consumer consoles in f
 1. Google Search Console — property on the apex, sitemap submitted, URL inspection on a sample of article locs, request indexing.
 2. Bing Webmaster Tools — same sitemap, URL inspection.
 3. IndexNow key at a well-known URL, ping Bing/Yandex with the article locs after each deploy.
-4. Confirm `robots.txt` `Allow: /` and `Sitemap:`.
+4. Confirm `robots.txt` `Allow: /` and `Sitemap:`. Do not `Disallow` retrieval crawlers (`OAI-SearchBot`, `ChatGPT-User`, `Claude-SearchBot`, `PerplexityBot`).
+5. If the site is on Cloudflare: open **AI Crawl Control** (or Bot Fight / "Block AI bots"). New zones have defaulted to blocking AI crawlers since 2025-07. That block does not appear in `robots.txt`. From the operator machine:
+
+```bash
+for ua in   'Mozilla/5.0 (compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot)'   'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ChatGPT-User/1.0; +https://openai.com/bot)'   'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-SearchBot/1.0; +https://anthropic.com)'   'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)'; do
+  curl -sI -A "$ua" -o /dev/null -w "%{http_code} $ua\n" https://example.com/answers/the-live-slug
+done
+```
+
+A 403 / challenge / 0-byte block here is Gate B failing for a reason consoles will not show. A 200 from a VPS is not a guarantee the dashboard is open — still look.
 
 Then wait and re-run Gate B. Do not write Wave 2/3 pages in the meantime.
 
@@ -445,9 +458,21 @@ The article URL appears for `site:` / branded queries, but the cell's confirmati
 - Discovery cluster: change H1 / table / FAQ on the existing category URL so it matches the typed string.
 - Search-blind: no retrieval will save it. EDIT phrasing or accept weights.
 
+### Gate E — consensus (off-site)
+
+The compare URL is live, indexed, and still loses the confirmation string to the incumbent's docs and every third-party "use <incumbent>" page. First-party copy cannot outvote that.
+
+Consensus means the brand appears **next to that incumbent** somewhere the cell's search backend already retrieves: an editorial, a forum thread, a listicle, a talk transcript, a YouTube title/description/transcript. One earned mention in a place models already cite beats a tenth `/answers` twin.
+
+This is not a content brief for a new slug. Do not film a 20-video channel because a consumer-AIO study reported a 0.737 YouTube correlation. If you make a video, it is one walkthrough of a bake-off you already ran, titled as the typed confirmation string, with a real transcript — then re-run `--only-id` on those seeds.
+
+A "how'd you hear about us" on install/signup is measurement, not AEO content. Keep it if you have a signup; it is out of scope for the CLI.
+
 ### Do not
 
 - Add a third pile of `/answers` twins because Gate B failed.
 - Treat Search Console "requested" or a VPS Bing HTML dump as Gate B.
 - Sitemap the `.md` twin next to the HTML canonical.
 - Re-run the full grid to debug retrieval. `--only-id` on a few confirmation seeds is enough once Gate B starts passing.
+- Replace this playbook with a ChatGPT / AI-Overview dashboard. Those surfaces are out of scope.
+- Mint pages whose only job is to host a YouTube embed.
