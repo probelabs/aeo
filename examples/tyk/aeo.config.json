@@ -1,0 +1,648 @@
+{
+  "schema_version": "aeo-cli-config-v1",
+  "brand": "Tyk",
+  "domain": "tyk.io",
+  "aliases": [
+    "tyk",
+    "tyk.io",
+    "tykhq",
+    "Tyk Gateway",
+    "Tyk API Gateway"
+  ],
+  "competitors": [
+    "kong",
+    "apigee",
+    "aws api gateway",
+    "amazon api gateway",
+    "azure api management",
+    "azure apim",
+    "apache apisix",
+    "apisix",
+    "krakend",
+    "traefik",
+    "gravitee",
+    "zuplo",
+    "nginx",
+    "cloudflare",
+    "mulesoft",
+    "envoy",
+    "gloo",
+    "solo.io",
+    "ngrok",
+    "ambassador",
+    "emissary",
+    "istio",
+    "fastmcp",
+    "openapi",
+    "auth0"
+  ],
+  "engines": [
+    "claude",
+    "codex",
+    "grok"
+  ],
+  "samples_per_arm": 1,
+  "data_dir": "aeo-data",
+  "prompts": [
+    {
+      "id": "unaware-too-many-urls",
+      "text": "I have 12 backend services with their own URLs and the frontend is calling them directly. How should I clean that up?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-keys-in-frontend",
+      "text": "We're putting API keys in the React app and I know that's wrong. What do people actually do?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-partner-hammering",
+      "text": "One partner is hammering a single endpoint and taking the service down. How do I stop that without rewriting the app?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-internal-public",
+      "text": "Some HTTP APIs are internal and some should be public. How do I keep them from mixing?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-auth-copy-paste",
+      "text": "Every microservice reimplements JWT auth slightly differently. Is there a better pattern?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-nginx-enough",
+      "text": "Is nginx plus a couple of location blocks enough, or do we need something else in front of our APIs?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-mobile-vs-web",
+      "text": "Mobile and web hit the same backends but need different rate limits and keys. How is that usually done?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-who-called",
+      "text": "I can't tell which client app called which endpoint last night. What should I set up?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-emailed-key",
+      "text": "We emailed a new API key to a partner. How do grown-up teams issue and rotate keys?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-cors",
+      "text": "CORS is a mess across 8 services. Can that live in one place?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-v1-v2",
+      "text": "We need /v1 and /v2 of the same API live at once. Least painful way?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-contractor",
+      "text": "A contractor needs three endpoints only, not the whole backend. How do people do that?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-cloud-bill",
+      "text": "Our managed API gateway bill exploded. What are the cheaper or self-hosted options?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-ip-payroll",
+      "text": "Finance wants only certain IPs to hit payroll APIs. Where should that live?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-hanging",
+      "text": "Downstream services hang and the client waits forever. Timeouts in the app or in front?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-partner-sandbox",
+      "text": "Product wants a partner sandbox that isn't prod. How do people do API sandboxes?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-metrics-public",
+      "text": "We left /health and /metrics on the internet. How do I hide ops endpoints without touching each service?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-postman-prod",
+      "text": "The whole company shares one Postman collection hitting prod. How do I give people keys that can't destroy data?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-share-with-company",
+      "text": "We need to share a few APIs with another company without giving them VPN access. What is the usual pattern?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-leaked-in-slack",
+      "text": "A partner API key showed up in Slack. How do I revoke it fast and issue a new one?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-auth0-enough",
+      "text": "We already have Auth0. Do we still need something in front of the APIs, or is that the same job?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-bots-scraping",
+      "text": "Bots are scraping our public API and we are paying for it. How do people throttle that without blocking real users?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-what-is-gateway",
+      "text": "Everyone says put an API gateway in front. What problem does that actually solve that nginx doesn't?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-cloudflare-instead",
+      "text": "Can we just use Cloudflare in front of our APIs instead of an API gateway?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "unaware-deprecation",
+      "text": "We need to turn off an old endpoint in six months and warn every consumer. How is that usually done?",
+      "class": "focus",
+      "why": "unaware"
+    },
+    {
+      "id": "expert-selfhost-vs-saas",
+      "text": "When is a self-hosted API gateway actually better than Apigee or AWS API Gateway?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-middle-of-market",
+      "text": "Apigee is too expensive and we do not want to assemble a portal on top of nginx. What do mid-size teams actually run?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-ingress-vs-gateway",
+      "text": "We already have ingress-nginx. Do we still need an API gateway in Kubernetes, or is ingress enough?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-mtls-and-keys",
+      "text": "mTLS for partner APIs and API keys for mobile, on the same gateway. How do people combine that?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-jwt-or-introspect",
+      "text": "Should the gateway validate JWTs itself or introspect against the IdP on every request?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-quota-vs-rate",
+      "text": "Rate limit vs quota in API management: how do you set both per consumer?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-canary",
+      "text": "Weighted canary to a new upstream from the API gateway, no service mesh. How?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-header-rewrite",
+      "text": "Strip incoming headers, inject a correlation id, rewrite paths. Gateway or app?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-multi-region",
+      "text": "API gateway active-active in two regions without splitting keys and quotas. How do people do it?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-portal-needs",
+      "text": "Besides Swagger UI, what does a decent API developer portal actually need?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-charge-per-call",
+      "text": "We want to charge partners per API call. Which products actually bill, vs just quotas?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-oas-drift",
+      "text": "How do you generate gateway config from OpenAPI so it does not drift from the spec?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-mesh-or-gateway",
+      "text": "Zero-trust for internal APIs: service mesh, gateway, or both?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-opa",
+      "text": "Can I run OPA/Rego at the API gateway instead of in every service?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-websockets",
+      "text": "Do API gateways handle WebSockets and SSE without killing idle connections?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-graphql-complexity",
+      "text": "How do you rate-limit GraphQL by query complexity, not just HTTP requests?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-analytics-tokens",
+      "text": "API analytics keep logging Authorization headers. Usage dashboards without storing tokens?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-gitops",
+      "text": "API gateway config in git and CI, not click-ops. Which stacks actually work that way?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-hybrid",
+      "text": "Same API policies on-prem and in AWS. What hybrid API management options exist?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-schema-at-edge",
+      "text": "Max body size, JSON schema, drop weird content-types before the app. Gateway feature or WAF?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-cache",
+      "text": "GET caching in the API gateway vs Cloudflare/CDN in front. Who should own it?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-mock-spec",
+      "text": "Can a gateway mock responses from an OpenAPI spec so frontend work can start first?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-hmac",
+      "text": "Partners send HMAC-signed webhooks. Verify in the gateway or the app?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-circuit",
+      "text": "One upstream is dying. Circuit-break at the gateway so the rest of the APIs stay up?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-okta",
+      "text": "We use Okta. Validate tokens at the gateway and pass a stable user id downstream. How?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-gql-fed",
+      "text": "Three GraphQL subgraphs. Federation in Apollo or in the API gateway?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-rate-by-user",
+      "text": "Rate limit by logged-in user, not by IP. How do gateways actually do that?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-pci-logs",
+      "text": "For SOC2/PCI, what belongs in API gateway logs and what must never be stored?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-who-owns",
+      "text": "Platform team vs each squad owning the API gateway. What actually scales?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-third-party-front",
+      "text": "Can I put a gateway in front of a third-party API we do not control, just to apply our keys and quotas?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "expert-graphql-and-rest",
+      "text": "REST and GraphQL through the same gateway. What breaks in practice with rate limits and auth?",
+      "class": "focus",
+      "why": "expert"
+    },
+    {
+      "id": "agent-keys-in-prompt",
+      "text": "My coding agent keeps putting production API keys in prompts. How do I let it call APIs safely?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-retry-storm",
+      "text": "The agent retries a failing HTTP tool 40 times and we get rate-limited. How do I cap that?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-hide-admin",
+      "text": "How do I expose only some REST endpoints to an LLM agent, not the admin API?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-audit-as-user",
+      "text": "I need a log of every HTTP call an AI agent made, and which user it was acting as.",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-openapi-to-tools",
+      "text": "I have an OpenAPI spec. Least dumb way to turn it into tools an agent can call?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-human-gate",
+      "text": "Refunds and deletes from an agent should need a human click. Where does that gate live?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-quota-per-agent",
+      "text": "Three internal agents share one backend and starve each other. Separate quotas how?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-ssrf",
+      "text": "An agent built a URL and hit our metadata service. How do I allowlist tool HTTP?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-stale-tools",
+      "text": "Agent tools are stale vs the real API and keep 404ing. How do I keep schemas in sync?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-jobs",
+      "text": "Agent kicks off a job and polls. One tool, a webhook, or something in front of the API?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-timeouts",
+      "text": "LLM tool calls time out at 60s, the API is slower. Timeout in the agent, the proxy, or both?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-staging-twin",
+      "text": "Agent on synthetic data in staging and real APIs in prod, same tool names. Pattern?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-spend-loop",
+      "text": "The agent found it can call an expensive third-party API in a loop. Kill switch in front?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-own-key-or-user",
+      "text": "Should each AI agent have its own API key, or inherit the end user's OAuth token?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-json-errors",
+      "text": "Agents choke on HTML error pages. How do I force JSON errors at the edge?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-public-llm",
+      "text": "We are going to let ChatGPT and Claude call our API from the internet. How do we not get wrecked?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "agent-platform-vs-diy",
+      "text": "FastMCP / custom MCP / just REST tools: how should we expose APIs to coding agents in 2026?",
+      "class": "focus",
+      "why": "agent"
+    },
+    {
+      "id": "mcp-wrap-rest",
+      "text": "How do I wrap an existing REST API as an MCP server without rewriting the backend?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-remote-oauth",
+      "text": "What's the right way to do OAuth for a remote MCP server that talks to our APIs?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-rate-limit",
+      "text": "Can I rate-limit MCP tool calls the same way I rate-limit HTTP, or is that a different layer?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-or-openapi",
+      "text": "Should I give Claude an MCP server or just an OpenAPI spec? What is actually working?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-many-backends",
+      "text": "One MCP server in front of 15 internal APIs with different auth. Is that a gateway job?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-stdio-or-http",
+      "text": "When should MCP be local stdio vs a remote HTTP endpoint behind our API layer?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-scopes",
+      "text": "How do I map MCP tools to OAuth scopes so an agent cannot call delete-customer?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-company-catalog",
+      "text": "Is there a catalog or gateway for which MCP servers a company agent is allowed to use?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-inject-secrets",
+      "text": "Remote MCP over HTTP: should a gateway inject API keys so the model never sees them?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-audit-like-api",
+      "text": "How do I audit MCP tool calls the same way I audit API gateway access logs?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-broke-cursor",
+      "text": "We changed an MCP tool schema and old Cursor sessions broke. How do people version MCP like APIs?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-on-k8s",
+      "text": "Sane way to run remote MCP servers in Kubernetes with auth and ingress?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-dcr",
+      "text": "MCP clients want Dynamic Client Registration. How do I put that in front of an IdP that does not support DCR?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-too-many-tools",
+      "text": "Cursor connected to our MCP and listed 200 tools. How do I publish a small allowlist per team?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-stream-dies",
+      "text": "MCP streamable HTTP dies behind our reverse proxy. Which proxy settings actually matter?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-random-github",
+      "text": "Someone on the team added a random GitHub MCP in Claude Desktop. How do companies stop that?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "mcp-same-quotas",
+      "text": "Some clients are MCP, some are still REST. Can they share auth, quotas, and an audit trail?",
+      "class": "focus",
+      "why": "mcp"
+    },
+    {
+      "id": "compare-not-nginx",
+      "text": "What's a good open source API gateway if we do not want to build key management ourselves on nginx?",
+      "class": "watch",
+      "why": "compare"
+    },
+    {
+      "id": "compare-kong-pain",
+      "text": "Kong is fighting us. What are the serious alternatives people actually migrate to?",
+      "class": "watch",
+      "why": "compare"
+    },
+    {
+      "id": "compare-leave-apigee",
+      "text": "What do mid-size teams use instead of Apigee if they still want a developer portal and analytics?",
+      "class": "watch",
+      "why": "compare"
+    },
+    {
+      "id": "compare-leave-aws",
+      "text": "I do not want to be stuck on AWS API Gateway. What self-hosted API management looks closest?",
+      "class": "watch",
+      "why": "compare"
+    },
+    {
+      "id": "compare-krakend",
+      "text": "When is KrakenD not enough and you actually need API keys, a portal, and analytics?",
+      "class": "watch",
+      "why": "compare"
+    },
+    {
+      "id": "compare-apisix",
+      "text": "Apache APISIX vs Kong: who actually has usable key management and a developer portal?",
+      "class": "watch",
+      "why": "compare"
+    },
+    {
+      "id": "compare-traefik",
+      "text": "Is Traefik an API gateway or just ingress? We need keys, quotas, and a portal.",
+      "class": "watch",
+      "why": "compare"
+    },
+    {
+      "id": "compare-gravitee",
+      "text": "Gravitee vs others if we care about Kafka/event APIs as well as REST.",
+      "class": "watch",
+      "why": "compare"
+    },
+    {
+      "id": "compare-azure",
+      "text": "Azure API Management feels heavy. Lighter option that still does subscriptions?",
+      "class": "watch",
+      "why": "compare"
+    },
+    {
+      "id": "compare-cloudflare",
+      "text": "Cloudflare API Gateway / Workers vs a traditional API management product. When is CF enough?",
+      "class": "watch",
+      "why": "compare"
+    }
+  ]
+}

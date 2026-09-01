@@ -1,0 +1,17 @@
+{
+  "schema_version": "aeo-judge-v1",
+  "per_hit": {
+    "stance": ["recommend", "mention", "warn", "reject"],
+    "position": ["first", "among", "last", "aside"],
+    "ahead": ["string"],
+    "quote": "string <=40 words",
+    "judge": "claude|codex|grok",
+    "confidence": "0..1"
+  },
+  "board": {
+    "headline": "string",
+    "actions": [
+      {"title": "string", "why": "string", "do": "string", "evidence": "string"}
+    ]
+  }
+}

@@ -114,13 +114,17 @@ def _grok_argv(cli: str, arm: str, prompt: str, cwd: Path) -> list[str]:
     # -p/--single consumes the next argument as the prompt. Flags must come first.
     # strict: read CWD + system paths only (not ~/.aeo). On macOS child network
     # still works so the search arm can use web_search.
+    # Default strict. Stock grok refuses strict when /var/run/docker.sock is a
+    # symlink (Docker Desktop). Override with GROK_SANDBOX=workspace when needed.
+    # Pair with GROK_HOME pointing at an MCP-free home (default ~/.grok-aeo-nomcp).
+    sandbox = os.environ.get("GROK_SANDBOX") or "strict"
     argv = [
         cli,
         "--cwd",
         str(cwd),
         "--no-memory",
         "--sandbox",
-        "strict",
+        sandbox,
         "--disallowed-tools",
         GROK_FILE_TOOLS,
         "--verbatim",
@@ -156,6 +160,14 @@ def run_invocation(inv: Invocation, *, timeout: int = DEFAULT_TIMEOUT) -> ExecRe
             error=f"{inv.engine} CLI not found: {inv.argv[0]}",
         )
     env = os.environ.copy()
+    if inv.engine == "grok":
+        # AEO must not inherit ~/.grok MCP (Chiaro, etc). Copy auth into this home.
+        env["GROK_HOME"] = os.environ.get("GROK_HOME") or str(
+            Path.home() / ".grok-aeo-nomcp"
+        )
+    user_sock = Path.home() / ".docker/run/docker.sock"
+    if user_sock.exists() and "DOCKER_HOST" not in env:
+        env["DOCKER_HOST"] = f"unix://{user_sock}"
     try:
         proc = subprocess.run(
             inv.argv,

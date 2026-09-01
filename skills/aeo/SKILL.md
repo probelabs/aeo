@@ -103,3 +103,8 @@ After a full-grid zero (or near-zero) mention, do not start with more articles. 
 - Grok search: `--output-format json --verbatim` (not streaming-json)
 - Codex knowledge: `codex exec --ephemeral --skip-git-repo-check --sandbox read-only` without `--enable standalone_web_search`
 - Codex search: same plus `--json --enable standalone_web_search`
+
+
+## Testimony judge
+
+After a full evidence run, classify each `brand_mentioned` cell with `scripts/judge_run.py` (stance/position/quote), then `scripts/render_judge_html.py`. Do not treat CLI `recommended` as testimony. Grok AEO runs must use `GROK_HOME` without MCP and may need `GROK_SANDBOX=workspace` when Docker Desktop makes `docker.sock` a symlink.

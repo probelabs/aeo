@@ -118,3 +118,8 @@ A run summary for humans is not done if any item is missing. Recompute every num
 10. What you will re-run (`--only-id`) after ship, and what you will not (do not restart a full grid).
 
 Human view of the same payload: `python3 -m aeo board <file>` (markdown + JSON; `--format html` writes the standalone report) plus the evidence JSON. Merge engine files with `python3 -m aeo report --html --out report.html run-a.json run-b.json`.
+
+
+## Testimony judge
+
+After a full evidence run, classify each `brand_mentioned` cell with `scripts/judge_run.py` (stance/position/quote), then `scripts/render_judge_html.py`. Do not treat CLI `recommended` as testimony. Grok AEO runs must use `GROK_HOME` without MCP and may need `GROK_SANDBOX=workspace` when Docker Desktop makes `docker.sock` a symlink.
