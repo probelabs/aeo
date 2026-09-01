@@ -224,6 +224,48 @@ def render(run: Path) -> str:
     parts.append(f"<div class='top-meta'><span class='pill'>tyk100-20260901</span>")
     parts.append(f"<span class='pill'>{n_cells} cells</span></div></header><main>")
 
+    parts.append("<section class='method'>")
+    parts.append("<p class='eyebrow'>Methodology</p>")
+    parts.append("<h1>What this board measures</h1>")
+    parts.append(
+        "<p>For each pain query we run <b>two arms</b> on Claude, Codex, and Grok. "
+        "Seeds stay verbatim (no brand bait). Hits are regex brand mentions; stance/position "
+        "come from a post-hoc judge on the raw answer, not from the CLI <code>recommended</code> flag.</p>"
+    )
+    parts.append("<div class='method-grid'>")
+    parts.append(
+        "<article><h3>Mention K</h3>"
+        f"<p>Knowledge-only arm: web search forced <b>off</b>. Did the model name "
+        f"<b>{esc(brand)}</b> from memory?</p>"
+        "<p class='ex'><b>Example.</b> Query: “rate limit partner APIs by API key.” "
+        "Answer lists Kong and Apigee but never Tyk → <span class='leg-chip miss'>miss</span>. "
+        "Answer says “Tyk or Kong…” → <span class='leg-chip men'>mention</span>.</p></article>"
+    )
+    parts.append(
+        "<article><h3>Mention S</h3>"
+        f"<p>Search-allowed arm: the model <b>may</b> use web search. Did the final answer "
+        f"name <b>{esc(brand)}</b> (whether or not it searched)?</p>"
+        "<p class='ex'><b>Example.</b> Same query; model searches “API gateway rate limiting”, "
+        "then recommends Tyk first → <span class='leg-chip rec'>recommend</span> + first pick. "
+        "Searches but only cites Cloudflare → <span class='leg-chip miss'>miss</span>.</p></article>"
+    )
+    parts.append(
+        "<article><h3>Recommend / first / warn</h3>"
+        "<p>Judge labels on hits only: <b>recommend</b> (pushed as a fit), <b>mention</b> "
+        "(named, not pushed), <b>warn/reject</b>, and list <b>position</b> (first / among / last / aside).</p>"
+        "<p class='ex'><b>Example.</b> “Use Tyk if you need…, otherwise Kong” with Tyk leading → "
+        "recommend + first. “Also consider Tyk” after three others → mention + last.</p></article>"
+    )
+    parts.append(
+        "<article><h3>Searched + vendors in box</h3>"
+        "<p><b>Searched</b> = the search arm actually fired a search tool. "
+        "<b>Vendors typed into search</b> counts names inside those tool queries "
+        f"(prebelief), including {esc(brand)} when an alias appears.</p>"
+        "<p class='ex'><b>Example.</b> Tool query “Kong vs Apigee vs Tyk rate limiting” "
+        "counts all three in the search-vendor bars, even if the answer later drops Tyk.</p></article>"
+    )
+    parts.append("</div></section>")
+
     actions = (board or {}).get("actions") or []
     headline = (board or {}).get("headline") or ""
     parts.append("<section class='actions'>")
@@ -275,8 +317,20 @@ def render(run: Path) -> str:
     parts.append("</section>")
 
 
-    # competitor mention fan-out across all arms
+    # name fan-out: brand + competitors in answers; brand + vendors in search box
     from collections import Counter
+    aliases = {brand.lower()}
+    for _e, doc in docs.items():
+        ws = doc.get("workspace") or {}
+        for a in ws.get("aliases") or []:
+            aliases.add(str(a).lower())
+        if ws.get("brand"):
+            aliases.add(str(ws["brand"]).lower())
+
+    def is_brand(name: str) -> bool:
+        n = (name or "").lower()
+        return any(a == n or a in n or n in a for a in aliases if a)
+
     comp_counts = Counter()
     search_vendor_counts = Counter()
     for row in rows:
@@ -286,37 +340,65 @@ def render(run: Path) -> str:
                 arm = arms.get(arm_name)
                 if not isinstance(arm, dict) or arm.get("error"):
                     continue
+                if arm.get("brand_mentioned"):
+                    comp_counts[brand] += 1
                 for c in arm.get("competitor_mentions") or []:
-                    comp_counts[str(c)] += 1
+                    c = str(c)
+                    if is_brand(c):
+                        continue  # already counted via brand_mentioned
+                    comp_counts[c] += 1
                 if arm_name == "search":
-                    for v in arm.get("vendors_in_search_queries") or []:
-                        search_vendor_counts[str(v)] += 1
+                    vend = [str(v) for v in (arm.get("vendors_in_search_queries") or [])]
+                    # also scan raw search queries for brand aliases
+                    qs = " ".join(str(q) for q in (arm.get("search_queries") or [])).lower()
+                    brand_in_box = any(a in qs for a in aliases if len(a) >= 3) or any(is_brand(v) for v in vend)
+                    if brand_in_box:
+                        search_vendor_counts[brand] += 1
+                    for v in vend:
+                        if is_brand(v):
+                            continue
+                        search_vendor_counts[v] += 1
 
-    parts.append("<h2>Who got named instead</h2>")
-    parts.append("<p class='hint'>Competitor mentions in answer text (all engines, both arms). Not the same as search-box prebelief.</p>")
+    def vendor_rows(counts: Counter, *, brand_name: str) -> str:
+        if not counts:
+            return "<p class='hint'>Nothing recorded.</p>"
+        top = counts.most_common(20)
+        # always surface brand even if outside top-20
+        if brand_name in counts and brand_name not in {n for n, _ in top}:
+            top = [(brand_name, counts[brand_name])] + top[:19]
+        # put brand first when present
+        top = sorted(top, key=lambda x: (0 if x[0] == brand_name else 1, -x[1], x[0].lower()))
+        mx = max(n for _, n in top) or 1
+        bits = []
+        for name, n in top:
+            width = (n / mx) * 100
+            cls = "vname brand" if name == brand_name else "vname"
+            fill = "brand" if name == brand_name else "teal"
+            bits.append(
+                f"<div class='vrow'><span class='{cls}'>{esc(name)}</span>"
+                f"<div class='bar'><span class='bar-fill {fill}' style='width:{width:.1f}%'></span></div>"
+                f"<span class='vcount'>{n}</span></div>"
+            )
+        return "".join(bits)
+
+    parts.append("<h2>Who got named</h2>")
+    parts.append(
+        f"<p class='hint'>{esc(brand)} (from brand_mentioned) plus competitor names in answer text. "
+        "All engines, both arms. Not the same as search-box prebelief.</p>"
+    )
     parts.append("<div class='vendor-bars'>")
-    for name, n in comp_counts.most_common(20):
-        width = (n / (comp_counts.most_common(1)[0][1] if comp_counts else 1)) * 100
-        parts.append(
-            f"<div class='vrow'><span class='vname'>{esc(name)}</span>"
-            f"<div class='bar'><span class='bar-fill teal' style='width:{width:.1f}%'></span></div>"
-            f"<span class='vcount'>{n}</span></div>"
-        )
-    if not comp_counts:
-        parts.append("<p class='hint'>No competitor mentions recorded.</p>")
+    parts.append(vendor_rows(comp_counts, brand_name=brand))
     parts.append("</div>")
 
     parts.append("<h2>Vendors typed into search</h2>")
-    parts.append("<p class='hint'>Names inside search tool queries (search arm only).</p>")
+    parts.append(
+        f"<p class='hint'>Names inside search tool queries (search arm only), including {esc(brand)} "
+        "when an alias appeared in the query box.</p>"
+    )
     parts.append("<div class='vendor-bars'>")
-    for name, n in search_vendor_counts.most_common(20):
-        width = (n / (search_vendor_counts.most_common(1)[0][1] if search_vendor_counts else 1)) * 100
-        parts.append(
-            f"<div class='vrow'><span class='vname'>{esc(name)}</span>"
-            f"<div class='bar'><span class='bar-fill teal' style='width:{width:.1f}%'></span></div>"
-            f"<span class='vcount'>{n}</span></div>"
-        )
-    if not search_vendor_counts:
+    if search_vendor_counts:
+        parts.append(vendor_rows(search_vendor_counts, brand_name=brand))
+    else:
         parts.append("<p class='hint'>Nobody typed vendor names into search (or no engine searched).</p>")
     parts.append("</div>")
 
@@ -445,6 +527,16 @@ display:flex;align-items:center;justify-content:center;font-weight:650;font-size
 .vcount{text-align:right;color:var(--muted);font-size:12px}
 .missline{opacity:.9}
 .missline i{color:var(--miss)}
+.method{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 24px;margin-bottom:22px}
+.method>p{color:var(--muted);font-size:14px;max-width:72ch}
+.method-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:14px}
+.method-grid article{background:#0e1116;border:1px solid var(--line);border-radius:12px;padding:14px}
+.method-grid h3{margin:0 0 8px;font-size:14px}
+.method-grid p{margin:0 0 8px;font-size:13px;color:var(--muted)}
+.method-grid .ex{margin:0;font-size:12px;color:#a8b2bf}
+.method-grid code{font-size:12px;color:var(--teal)}
+.bar-fill.brand{background:linear-gradient(90deg,#b8860b,var(--men))}
+.vname.brand{color:var(--men);font-weight:650}
 
 .harness{margin:10px 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line)}
 .harness:last-child{border-bottom:0}
