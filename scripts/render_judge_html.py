@@ -11,9 +11,81 @@ ENGINES = ("claude", "codex", "grok")
 ARMS = ("knowledge", "search")
 
 
+
 def esc(s: str) -> str:
     return html.escape(s or "", quote=True)
 
+
+def harness_block(
+    *,
+    engine: str,
+    arm_name: str,
+    kind: str,
+    brand: str,
+    stance: str = "",
+    position: str = "",
+    quote: str = "",
+    ahead: list | None = None,
+    competitors: list | None = None,
+    arm: dict | None = None,
+) -> str:
+    """One drawer card: summary line + collapsible raw answer."""
+    ahead = ahead or []
+    competitors = competitors or []
+    arm = arm if isinstance(arm, dict) else {}
+    raw = arm.get("raw_response_text") or ""
+    search_qs = arm.get("search_queries") or []
+
+    if kind == "hit":
+        ahead_txt = ", ".join(str(x) for x in ahead)
+        head = (
+            f"<div class='quote'><b>{esc(engine)} {esc(arm_name)}</b> "
+            f"<i>{esc(stance)}/{esc(position)}</i> {esc(quote or '(no quote)')}"
+            + (f" <span class='ahead'>ahead: {esc(ahead_txt)}</span>" if ahead_txt else "")
+            + "</div>"
+        )
+    elif kind == "miss":
+        comps_txt = ", ".join(str(c) for c in competitors[:10])
+        named = f" Named instead: {esc(comps_txt)}." if comps_txt else ""
+        searched = ""
+        if arm_name == "search":
+            if arm.get("searched"):
+                vq = arm.get("vendors_in_search_queries") or []
+                vqs = ", ".join(str(x) for x in vq[:8])
+                searched = " Searched." + (f" Vendors in box: {esc(vqs)}." if vqs else "")
+            else:
+                searched = " Did not search."
+        head = (
+            f"<div class='quote missline'><b>{esc(engine)} {esc(arm_name)}</b> "
+            f"<i>never mentioned {esc(brand)}</i>.{named}{searched}</div>"
+        )
+    else:
+        head = (
+            f"<div class='quote missline'><b>{esc(engine)} {esc(arm_name)}</b> "
+            f"<i>not run</i></div>"
+        )
+
+    bits = [f"<div class='harness'>{head}"]
+    if search_qs:
+        qlines = "\n".join(str(q) for q in search_qs)
+        bits.append(
+            "<details class='raw-fold'>"
+            "<summary>Search queries</summary>"
+            f"<pre class='raw-body'>{esc(qlines)}</pre>"
+            "</details>"
+        )
+    if raw:
+        n = len(raw)
+        bits.append(
+            "<details class='raw-fold'>"
+            f"<summary>Raw answer <span class='raw-meta'>{n:,} chars</span></summary>"
+            f"<pre class='raw-body'>{esc(raw)}</pre>"
+            "</details>"
+        )
+    elif kind != "none":
+        bits.append("<p class='hint raw-missing'>No raw_response_text stored.</p>")
+    bits.append("</div>")
+    return "".join(bits)
 
 def load(run: Path) -> tuple[dict[str, dict], dict, dict]:
     docs = {}
@@ -288,36 +360,20 @@ def render(run: Path) -> str:
                     tags.add("miss")
                 tip = f"{letter} {st or kind} {v.get('position') or ''}".strip()
                 marks.append(f"<span class='mk {cls}' title='{esc(tip)}'>{letter}</span>")
-                comps = v.get("competitors") or []
-                comps_txt = ", ".join(str(c) for c in comps[:10])
-                if kind == "hit":
-                    ahead = ", ".join(v.get("ahead") or [])
-                    quote = v.get("quote") or "(no quote)"
-                    drawer.append(
-                        f"<div class='quote'><b>{esc(e)} {arm_name}</b> "
-                        f"<i>{esc(st)}/{esc(v.get('position') or '')}</i> {esc(quote)}"
-                        + (f" <span class='ahead'>ahead: {esc(ahead)}</span>" if ahead else "")
-                        + "</div>"
+                drawer.append(
+                    harness_block(
+                        engine=e,
+                        arm_name=arm_name,
+                        kind=kind,
+                        brand=brand,
+                        stance=st,
+                        position=v.get("position") or "",
+                        quote=v.get("quote") or "",
+                        ahead=v.get("ahead") or [],
+                        competitors=v.get("competitors") or [],
+                        arm=arm if isinstance(arm, dict) else None,
                     )
-                elif kind == "miss":
-                    named = f" Named instead: {esc(comps_txt)}." if comps_txt else ""
-                    searched = ""
-                    if arm_name == "search" and isinstance(arm, dict):
-                        if arm.get("searched"):
-                            vq = arm.get("vendors_in_search_queries") or []
-                            vqs = ", ".join(str(x) for x in vq[:8])
-                            searched = " Searched." + (f" Vendors in box: {esc(vqs)}." if vqs else "")
-                        else:
-                            searched = " Did not search."
-                    drawer.append(
-                        f"<div class='quote missline'><b>{esc(e)} {arm_name}</b> "
-                        f"<i>never mentioned {esc(brand)}</i>.{named}{searched}</div>"
-                    )
-                elif kind == "none":
-                    drawer.append(
-                        f"<div class='quote missline'><b>{esc(e)} {arm_name}</b> "
-                        f"<i>not run</i></div>"
-                    )
+                )
             parts.append("<td class='eng'><span class='marks'>" + "".join(marks) + "</span></td>")
         parts.append("</tr>")
         parts.append(
@@ -389,6 +445,18 @@ display:flex;align-items:center;justify-content:center;font-weight:650;font-size
 .vcount{text-align:right;color:var(--muted);font-size:12px}
 .missline{opacity:.9}
 .missline i{color:var(--miss)}
+
+.harness{margin:10px 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.harness:last-child{border-bottom:0}
+.raw-fold{margin:6px 0 0 0}
+.raw-fold>summary{cursor:pointer;color:var(--teal);font-size:12px;user-select:none;list-style:none}
+.raw-fold>summary::-webkit-details-marker{display:none}
+.raw-fold>summary::before{content:'▸ ';color:var(--muted)}
+.raw-fold[open]>summary::before{content:'▾ '}
+.raw-meta{color:var(--muted);font-weight:400;margin-left:6px}
+.raw-body{margin:8px 0 0;padding:12px;background:#0e1116;border:1px solid var(--line);border-radius:10px;
+max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.5;color:#c9d2dc}
+.raw-missing{margin:4px 0 0}
 
 .qcell{max-width:520px}
 """
