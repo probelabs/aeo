@@ -2,7 +2,7 @@
 """Tyk AEO HTML: board actions on top, stance-colored K/S grid, quotes in the drawer."""
 from __future__ import annotations
 
-import html, json
+import html, json, os
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -112,16 +112,13 @@ def render(run: Path) -> str:
     docs, judge, board = load(run)
     rows = merge_rows(docs)
     eng_rates = rates(docs, judge, rows)
-    n_cells = sum(len((docs.get(e) or {}).get("prompts") or []) * 2 for e in ENGINES)
     brand = os.environ.get("AEO_BRAND") or "Tyk"
-    domain = "tyk.io"
-    for e, doc in docs.items():
+    for _e, doc in docs.items():
         ws = doc.get("workspace") or {}
         if ws.get("brand"):
             brand = str(ws["brand"])
-        if ws.get("domain"):
-            domain = str(ws["domain"])
-        break
+            break
+    n_cells = sum(len((docs.get(e) or {}).get("prompts") or []) * 2 for e in ENGINES)
     # overall search mention / recommend / first among search hits
     sm = sc = rec = fir = wrn = 0
     for e, r in eng_rates.items():
@@ -147,11 +144,11 @@ def render(run: Path) -> str:
     parts = []
     parts.append("<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>")
     parts.append("<meta name='viewport' content='width=device-width, initial-scale=1'>")
-    parts.append("<title>{esc(brand)} · AEO report</title><style>")
+    parts.append("<title>Tyk · AEO report</title><style>")
     parts.append(CSS)
     parts.append("</style></head><body>")
-    parts.append(f"<header class='top'><div class='top-brand'><span class='wordmark'>{esc(brand)}</span>")
-    parts.append(f"<span class='domain'>{esc(domain)}</span></div>")
+    parts.append("<header class='top'><div class='top-brand'><span class='wordmark'>Tyk</span>")
+    parts.append("<span class='domain'>tyk.io</span></div>")
     parts.append(f"<div class='top-meta'><span class='pill'>tyk100-20260901</span>")
     parts.append(f"<span class='pill'>{n_cells} cells</span></div></header><main>")
 
@@ -205,7 +202,54 @@ def render(run: Path) -> str:
         parts.append("</article>")
     parts.append("</section>")
 
+
+    # competitor mention fan-out across all arms
+    from collections import Counter
+    comp_counts = Counter()
+    search_vendor_counts = Counter()
+    for row in rows:
+        for e in ENGINES:
+            arms = row["engines"].get(e) or {}
+            for arm_name in ARMS:
+                arm = arms.get(arm_name)
+                if not isinstance(arm, dict) or arm.get("error"):
+                    continue
+                for c in arm.get("competitor_mentions") or []:
+                    comp_counts[str(c)] += 1
+                if arm_name == "search":
+                    for v in arm.get("vendors_in_search_queries") or []:
+                        search_vendor_counts[str(v)] += 1
+
+    parts.append("<h2>Who got named instead</h2>")
+    parts.append("<p class='hint'>Competitor mentions in answer text (all engines, both arms). Not the same as search-box prebelief.</p>")
+    parts.append("<div class='vendor-bars'>")
+    for name, n in comp_counts.most_common(20):
+        width = (n / (comp_counts.most_common(1)[0][1] if comp_counts else 1)) * 100
+        parts.append(
+            f"<div class='vrow'><span class='vname'>{esc(name)}</span>"
+            f"<div class='bar'><span class='bar-fill teal' style='width:{width:.1f}%'></span></div>"
+            f"<span class='vcount'>{n}</span></div>"
+        )
+    if not comp_counts:
+        parts.append("<p class='hint'>No competitor mentions recorded.</p>")
+    parts.append("</div>")
+
+    parts.append("<h2>Vendors typed into search</h2>")
+    parts.append("<p class='hint'>Names inside search tool queries (search arm only).</p>")
+    parts.append("<div class='vendor-bars'>")
+    for name, n in search_vendor_counts.most_common(20):
+        width = (n / (search_vendor_counts.most_common(1)[0][1] if search_vendor_counts else 1)) * 100
+        parts.append(
+            f"<div class='vrow'><span class='vname'>{esc(name)}</span>"
+            f"<div class='bar'><span class='bar-fill teal' style='width:{width:.1f}%'></span></div>"
+            f"<span class='vcount'>{n}</span></div>"
+        )
+    if not search_vendor_counts:
+        parts.append("<p class='hint'>Nobody typed vendor names into search (or no engine searched).</p>")
+    parts.append("</div>")
+
     parts.append("<h2>Queries</h2>")
+
     parts.append("<div class='chips' id='chips'>")
     for key, lab in (("recommend","recommend"), ("first","first pick"), ("last","last/aside"), ("warn","warn"), ("reject","reject"), ("miss","miss")):
         parts.append(f"<button type='button' class='chip' data-f='{key}'>{lab}</button>")
@@ -244,12 +288,42 @@ def render(run: Path) -> str:
                     tags.add("miss")
                 tip = f"{letter} {st or kind} {v.get('position') or ''}".strip()
                 marks.append(f"<span class='mk {cls}' title='{esc(tip)}'>{letter}</span>")
-                if v.get("quote"):
+                comps = v.get("competitors") or []
+                comps_txt = ", ".join(str(c) for c in comps[:10])
+                if kind == "hit":
                     ahead = ", ".join(v.get("ahead") or [])
-                    drawer.append(f"<div class='quote'><b>{esc(e)} {arm_name}</b> <i>{esc(st)}/{esc(v.get('position') or '')}</i> {esc(v['quote'])}" + (f" <span class='ahead'>ahead: {esc(ahead)}</span>" if ahead else "") + "</div>")
+                    quote = v.get("quote") or "(no quote)"
+                    drawer.append(
+                        f"<div class='quote'><b>{esc(e)} {arm_name}</b> "
+                        f"<i>{esc(st)}/{esc(v.get('position') or '')}</i> {esc(quote)}"
+                        + (f" <span class='ahead'>ahead: {esc(ahead)}</span>" if ahead else "")
+                        + "</div>"
+                    )
+                elif kind == "miss":
+                    named = f" Named instead: {esc(comps_txt)}." if comps_txt else ""
+                    searched = ""
+                    if arm_name == "search" and isinstance(arm, dict):
+                        if arm.get("searched"):
+                            vq = arm.get("vendors_in_search_queries") or []
+                            vqs = ", ".join(str(x) for x in vq[:8])
+                            searched = " Searched." + (f" Vendors in box: {esc(vqs)}." if vqs else "")
+                        else:
+                            searched = " Did not search."
+                    drawer.append(
+                        f"<div class='quote missline'><b>{esc(e)} {arm_name}</b> "
+                        f"<i>never mentioned {esc(brand)}</i>.{named}{searched}</div>"
+                    )
+                elif kind == "none":
+                    drawer.append(
+                        f"<div class='quote missline'><b>{esc(e)} {arm_name}</b> "
+                        f"<i>not run</i></div>"
+                    )
             parts.append("<td class='eng'><span class='marks'>" + "".join(marks) + "</span></td>")
         parts.append("</tr>")
-        parts.append(f"<tr class='drawer' data-i='{i}' hidden><td colspan='4' data-tags='{' '.join(sorted(tags))}'>{''.join(drawer) or '<span class=hint>No Tyk quote.</span>'}</td></tr>")
+        parts.append(
+            f"<tr class='drawer' data-i='{i}' hidden><td colspan='4' data-tags='{' '.join(sorted(tags))}'>"
+            f"{''.join(drawer)}</td></tr>"
+        )
         # put tags on the prompt row via rewrite is hard; attach on previous via js from drawer
     parts.append("</tbody></table></div>")
     parts.append("<script>")
@@ -308,6 +382,14 @@ display:flex;align-items:center;justify-content:center;font-weight:650;font-size
 .quote{margin:6px 0;font-size:13px;color:var(--muted)}
 .quote b{color:var(--text);margin-right:6px}
 .ahead{color:var(--men)}
+
+.vendor-bars{display:flex;flex-direction:column;gap:8px;margin:12px 0 24px}
+.vrow{display:grid;grid-template-columns:180px 1fr 48px;gap:10px;align-items:center}
+.vname{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vcount{text-align:right;color:var(--muted);font-size:12px}
+.missline{opacity:.9}
+.missline i{color:var(--miss)}
+
 .qcell{max-width:520px}
 """
 
