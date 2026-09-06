@@ -34,7 +34,7 @@ def score_arm(
         "searched": bool(parsed.searched),
         "search_queries": list(parsed.search_queries),
         "vendors_in_search_queries": vendors,
-        # v1: recommended == brand mentioned in answer text (not URL-only).
+        # v1: recommended == brand mentioned in answer text (prose or brand-domain URL host).
         "recommended": brand_mentioned,
     }
     if error:

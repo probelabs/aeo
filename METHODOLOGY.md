@@ -40,7 +40,7 @@ A mention that follows "this looks like an AEO eval" / "I'll read the local prot
 
 All extraction is deterministic: case-insensitive word-boundary regex. Raw samples are the source of truth; scores are views.
 
-**mention** — whole-word brand or alias in *answer text*. Not a substring (`xerj` does not match `xerjified`). Not URL-only (`https://xerj.org/docs` alone is not a mention; bare `xerj.org` in prose is).
+**mention** — whole-word brand or alias in *answer text*. Not a substring (`xerj` does not match `xerjified`). A domain-style alias as the host (or www.host) of an http(s) URL counts (`https://xerj.org/docs` is a `xerj.org` mention). Tokens that appear only in a URL path or query do not. Bare generic words that are not aliases still do not count.
 
 **competitors in answer** — same matcher over the configured competitor names.
 
@@ -50,7 +50,7 @@ All extraction is deterministic: case-insensitive word-boundary regex. Raw sampl
 
 **vendors_in_search_queries** — brand / alias / competitor names that appear as whole words inside those tool-call strings. This is pre-search belief: the model already chose vendors before looking.
 
-**recommended** — v1: same as brand mentioned in the answer (not URL-only).
+**recommended** — v1: same as brand mentioned in the answer (including domain-host URL citations).
 
 Optional aggregates on a run document:
 

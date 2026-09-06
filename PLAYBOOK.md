@@ -8,7 +8,7 @@ Nouns: **brand**, **incumbent**, **roster**, **watch**, **focus**, **fan-out**, 
 
 This playbook does **not** measure Gemini grounding, Google AI Overviews, or consumer chat websites. Do not log into those from a datacenter or VPS. Run `claude`, `codex`, and `grok` on the operator's own machine. Never pass `--bare` to Claude (it skips keychain). Raw flags: [skills/aeo/SKILL.md](skills/aeo/SKILL.md).
 
-`mention` and `recommended` are the same bit in v1: whole-word brand or alias in answer text, not a substring (`acme` does not match `acmeified`), not URL-only. See [METHODOLOGY.md](METHODOLOGY.md).
+`mention` and `recommended` are the same bit in v1: whole-word brand or alias in answer text, not a substring (`acme` does not match `acmeified`). A domain-style alias as an http(s) URL host counts; path-only tokens do not. See [METHODOLOGY.md](METHODOLOGY.md).
 
 ---
 
