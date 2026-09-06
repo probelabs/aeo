@@ -23,7 +23,7 @@ Do not use this for Gemini grounding, AI Overviews, or browser-login audits.
 - Never add the brand name, rust, or extra stack words to the user prompt.
 - The only suffix the runner adds is: `Recommend existing tools or products if relevant. Do not write, edit, execute, or read files from disk. Do not inspect the working directory or parent folders.`
 - Run every cell in an empty `/tmp/aeo-isolate-*` cwd. Grok: `--sandbox strict --cwd <isolate> --no-memory`. Do not use Grok `--sandbox workspace` (still reads the whole disk).
-- Mention = whole-word brand/alias in answer text, not substring, not URL-only. See [METHODOLOGY.md](../../METHODOLOGY.md).
+- Mention = whole-word brand/alias in answer text, not substring. A domain-style alias as an http(s) URL host counts; path-only tokens do not. See [METHODOLOGY.md](../../METHODOLOGY.md).
 - Raw evidence JSON is the source of truth. Rates are views.
 
 ## Init

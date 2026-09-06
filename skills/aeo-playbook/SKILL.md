@@ -29,7 +29,7 @@ Do not use this to run the full grid (that is [aeo](../aeo/SKILL.md)) or only to
 | Seed text | Config or `prompt_text` on the evidence row |
 | Whether our URL was cited | `raw_response_text` (board does not extract citations) |
 
-`mention` = whole-word brand/alias in answer text, not substring, not URL-only. `recommended` is the same bit. Board `win` is a ceiling (any engine, either arm) — still read the cells.
+`mention` = whole-word brand/alias in answer text, not substring. A domain-style alias as an http(s) URL host counts; path-only tokens do not. `recommended` is the same bit. Board `win` is a ceiling (any engine, either arm) — still read the cells.
 
 ## Next action
 
