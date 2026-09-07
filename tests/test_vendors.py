@@ -2,15 +2,19 @@ import unittest
 
 from aeo.vendors import (
     AliasMap,
+    annotate_vendor_cell,
     completed_cells,
     is_brand_vendor,
+    merge_classified_vendors,
     merge_named_vendors,
+    named_vendor_counts_by_origin,
     normalize_vendor_cell,
     normalize_vendor_key,
     preferred_display,
     pretty_strip,
     query_vendors_for_arm,
     seed_alias_map,
+    surprise_frequencies,
     who_got_named_counts,
 )
 
@@ -133,6 +137,44 @@ class MergeCellTests(unittest.TestCase):
         )
         self.assertEqual(names, ["Kong"])
 
+    def test_known_vs_surprise_after_normalize(self):
+        amap = seed_alias_map("Autheona", ["autheona"], ["Kickbox", "IPQualityScore"])
+        recs = merge_classified_vendors(
+            [
+                {"raw": "usercheck.com", "normalized": "UserCheck"},
+                {"raw": "Kickbox Inc", "normalized": "Kickbox"},
+                {"raw": "IP Quality Score", "normalized": "IPQualityScore"},
+            ],
+            [],
+            amap,
+            "Autheona",
+            ["autheona"],
+        )
+        by_name = {r["name"]: r["origin"] for r in recs}
+        self.assertEqual(by_name["UserCheck"], "surprise")
+        self.assertEqual(by_name["Kickbox"], "known")
+        self.assertEqual(by_name["IPQualityScore"], "known")
+
+    def test_annotate_stamps_origin_and_drops_brand(self):
+        amap = seed_alias_map("Autheona", ["autheona"], ["Kickbox"])
+        cell = annotate_vendor_cell(
+            {
+                "vendors": [
+                    {"raw": "UserCheck", "normalized": "UserCheck", "role": "recommend"},
+                    {"raw": "Autheona", "normalized": "Autheona", "role": "mention"},
+                    {"raw": "Kickbox", "normalized": "Kickbox", "role": "mention"},
+                ],
+                "query_vendors": [],
+            },
+            amap,
+            "Autheona",
+            ["autheona"],
+        )
+        origins = {v["normalized"]: v["origin"] for v in cell["vendors"]}
+        self.assertEqual(origins["UserCheck"], "surprise")
+        self.assertEqual(origins["Kickbox"], "known")
+        self.assertNotIn("Autheona", origins)
+
     def test_normalize_vendor_cell_shape(self):
         cell = normalize_vendor_cell(
             {
@@ -168,8 +210,8 @@ class WhoGotNamedTests(unittest.TestCase):
             },
         }
 
-    def test_usercheck_counts_when_absent_from_config(self):
-        amap = seed_alias_map("Autheona", ["autheona"], [])
+    def test_usercheck_is_surprise_when_absent_from_seed(self):
+        amap = seed_alias_map("Autheona", ["autheona"], ["Kickbox"])
         store = {
             "email-verify|claude|knowledge": {
                 "vendors": [{"raw": "UserCheck", "normalized": "UserCheck", "role": "recommend"}],
@@ -177,15 +219,51 @@ class WhoGotNamedTests(unittest.TestCase):
                 "confidence": 0.9,
             }
         }
-        counts = who_got_named_counts(
-            [self._row()],
+        known, surprise = named_vendor_counts_by_origin(
+            [self._row(comps=["Kickbox"])],
             store,
             brand="Autheona",
             aliases=["autheona"],
             alias_map=amap,
         )
-        self.assertEqual(counts["UserCheck"], 1)
-        self.assertNotIn("Autheona", counts)
+        self.assertEqual(surprise["UserCheck"], 1)
+        self.assertNotIn("UserCheck", known)
+        self.assertEqual(known["Kickbox"], 1)
+        self.assertNotIn("Autheona", known)
+        self.assertEqual(
+            who_got_named_counts(
+                [self._row(comps=["Kickbox"])],
+                store,
+                brand="Autheona",
+                aliases=["autheona"],
+                alias_map=amap,
+            )["Kickbox"],
+            1,
+        )
+        freqs = surprise_frequencies(
+            {
+                "claude": {
+                    "prompts": [
+                        {
+                            "prompt_id": "email-verify",
+                            "engines": {
+                                "claude": {
+                                    "knowledge": {
+                                        "raw_response_text": "Try UserCheck.",
+                                        "competitor_mentions": ["Kickbox"],
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                }
+            },
+            store,
+            brand="Autheona",
+            aliases=["autheona"],
+            competitors=["Kickbox"],
+        )
+        self.assertEqual(freqs[0], ("UserCheck", 1))
 
     def test_brand_hit_still_uses_brand_mentioned_not_llm(self):
         amap = seed_alias_map("Autheona", ["autheona"], [])

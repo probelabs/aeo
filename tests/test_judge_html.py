@@ -52,7 +52,7 @@ class JudgeHtmlVendorTests(unittest.TestCase):
                     "class": "focus",
                     "engines": {
                         "claude": {
-                            "knowledge": _arm(text="Use UserCheck or usercheck.com."),
+                            "knowledge": _arm(comps=["Kickbox"], text="Use UserCheck or Kickbox."),
                             "search": _arm(
                                 searched=True,
                                 queries=["usercheck.com email verification"],
@@ -66,7 +66,10 @@ class JudgeHtmlVendorTests(unittest.TestCase):
         }
         store = {
             "email-verify|claude|knowledge": {
-                "vendors": [{"raw": "UserCheck", "normalized": "UserCheck", "role": "recommend"}],
+                "vendors": [
+                    {"raw": "UserCheck", "normalized": "UserCheck", "role": "recommend"},
+                    {"raw": "Kickbox", "normalized": "Kickbox", "role": "mention"},
+                ],
                 "query_vendors": [],
                 "confidence": 0.9,
                 "judge": "claude",
@@ -83,12 +86,18 @@ class JudgeHtmlVendorTests(unittest.TestCase):
             (run / "claude.json").write_text(json.dumps(doc))
             (run / "vendors_judged.json").write_text(json.dumps(store))
             html = render.render(run)
-        who = html[html.index("<h2>Who got named</h2>") : html.index("<h2>Vendors typed into search</h2>")]
-        self.assertIn("UserCheck", who)
-        self.assertNotIn(">Kickbox<", who)
+        who = html[html.index("<h2>Who got named</h2>") : html.index("<h2>Surprise competitors</h2>")]
+        surprise = html[html.index("<h2>Surprise competitors</h2>") : html.index("<h2>Vendors typed into search</h2>")]
+        self.assertNotIn("UserCheck", who)
+        self.assertIn("Kickbox", who)
+        self.assertIn("UserCheck", surprise)
+        self.assertNotIn("Kickbox", surprise)
+        self.assertIn("badge-surprise", surprise)
         self.assertIn("Named instead: UserCheck", html)
+        self.assertIn("badge-surprise", html)
         box = html[html.index("<h2>Vendors typed into search</h2>") : html.index("<h2>Queries</h2>")]
         self.assertIn("UserCheck", box)
+        self.assertIn("Surprises", html)
 
     def test_regex_fallback_without_vendor_store(self):
         render = _load_render()
@@ -147,6 +156,37 @@ class JudgeRunCliTests(unittest.TestCase):
         self.assertTrue(judge.vendor_cell_done({"vendors": []}))
         self.assertFalse(judge.vendor_cell_done({"confidence": 0.5}))
         self.assertFalse(judge.vendor_cell_done(None))
+
+    def test_board_counts_include_surprises(self):
+        judge = _load_judge()
+        docs = {
+            "claude": {
+                "workspace": {"brand": "Autheona", "aliases": ["autheona"], "competitors": ["Kickbox"]},
+                "prompts": [
+                    {
+                        "prompt_id": "email-verify",
+                        "why": "focus",
+                        "engines": {
+                            "claude": {
+                                "knowledge": {
+                                    "brand_mentioned": False,
+                                    "raw_response_text": "Use UserCheck.",
+                                    "competitor_mentions": ["Kickbox"],
+                                }
+                            }
+                        },
+                    }
+                ],
+            }
+        }
+        vstore = {
+            "email-verify|claude|knowledge": {
+                "vendors": [{"raw": "UserCheck", "normalized": "UserCheck", "role": "recommend"}],
+            }
+        }
+        counts, _ = judge.summarize_for_board(Path("/tmp"), {}, docs, vstore)
+        self.assertIn("surprises", counts)
+        self.assertIn("UserCheck", counts)
 
 
 if __name__ == "__main__":

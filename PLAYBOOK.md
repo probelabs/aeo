@@ -483,9 +483,9 @@ A "how'd you hear about us" on install/signup is measurement, not AEO content. K
 Do **not** re-run the 600 cells to learn stance. After evidence JSON is complete:
 
 1. **Per-hit judge** — only cells with `brand_mentioned`. One model for the whole board (Claude CLI, tools off), not the engine that wrote the cell.
-2. **Vendor extract** — every completed arm (hits and misses). Discovers product names that are not on config `competitors`. Writes `vendors_judged.json`. Brand mention stays regex.
-3. **Board judge** — reads aggregates + sample quotes, writes 5–7 actions and a headline.
-4. **HTML** — actions on top, stance-colored K/S marks, quotes in the row drawer. “Who got named” / “Named instead” use the vendor extract (union regex).
+2. **Vendor extract** — every completed arm (hits and misses). Unions seed-list regex + LLM extract. Names whose normalized form is not on config `competitors` are **surprises** (flagged). Writes `vendors_judged.json`. Brand mention stays regex.
+3. **Board judge** — reads aggregates + sample quotes + high-frequency surprises, writes 5–7 actions and a headline. Surprises are a first-class gap.
+4. **HTML** — actions on top, stance-colored K/S marks, quotes in the row drawer. “Who got named” = brand + known seed competitors. “Surprise competitors” is a separate section.
 
 ```bash
 # Isolate Grok from personal MCP before any AEO run:

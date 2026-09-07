@@ -19,7 +19,7 @@
     "competitors": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 },
-      "description": "Optional bootstrap / alias hints for known competitor names (not URLs). Not a ceiling: the post-run LLM vendor extract discovers names absent from this list. Deterministic regex still uses this list for competitor_mentions and vendors_in_search_queries."
+      "description": "Seed / known competitor set (expected category map; not URLs). Keep adding names up front. Deterministic regex uses this list for competitor_mentions and vendors_in_search_queries. Post-run LLM extract still discovers names absent from this list; those are flagged as surprises."
     },
     "engines": {
       "type": "array",

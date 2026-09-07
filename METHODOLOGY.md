@@ -44,7 +44,12 @@ Brand mention, search-tool detection, and the configured-list competitor regex a
 
 **competitors in answer** (`competitor_mentions`) — same matcher over the configured competitor names. Cheap signal only. Names that are not on the list (e.g. UserCheck when the list has Kickbox) are invisible here.
 
-**named vendors** (`vendors_judged.json`) — post-run LLM extract over every completed arm (knowledge + search, hits and misses; skip errors/empty). Returns normalized product names (and optional role). HTML “Who got named” / miss-drawer “Named instead” prefer this list, union the regex `competitor_mentions`. Brand + aliases are filtered out so Autheona / Tyk / Proof are not double-counted as competitors. Re-runs are keyed `prompt_id|engine|arm` and skip completed cells.
+**named vendors** (`vendors_judged.json`) — post-run LLM extract over every completed arm (knowledge + search, hits and misses; skip errors/empty). Returns normalized product names (optional role). HTML unions this list with the regex `competitor_mentions`. Brand + aliases are filtered out so Autheona / Tyk / Proof are not double-counted as competitors. Re-runs are keyed `prompt_id|engine|arm` and skip completed cells.
+
+Each name is then labeled against the config seed list (after normalize / alias merge):
+
+- **known** — normalized form is in config `competitors` (the expected category map). Still useful to add names up front. HTML “Who got named” is brand + known.
+- **surprise** — named in the answer (or a search query) but **not** on the seed list. A good signal, flagged separately (HTML “Surprise competitors”, amber bars, badge). High-frequency surprises go into the board judge as a first-class gap — review them; consider adding repeats to the next run's seed list.
 
 **searched** — bool. True if the CLI transcript contains a search tool call or a vendor `web_search_requests` count > 0.
 

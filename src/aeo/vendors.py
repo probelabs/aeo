@@ -1,7 +1,9 @@
 """Normalize and merge product/vendor names from LLM extract + regex hints.
 
-Config `competitors` (and brand/aliases) seed an alias map. They are not a
-ceiling: names discovered in a post-run LLM pass join the same map.
+Config `competitors` are a seed / known set (expected category map). They are
+not a ceiling: names discovered in a post-run LLM pass still count. A hit
+whose normalized key is not in that seed set is a **surprise** — flagged,
+not quietly merged into the known pile.
 
 Brand mention scoring stays in `aeo.mention` (deterministic regex). This
 module is only for competitor / vendor fan-out after a run.
@@ -152,16 +154,41 @@ class AliasMap:
 
     def __init__(self) -> None:
         self._display: dict[str, str] = {}
+        self._seed_keys: set[str] = set()
         self.brand: str = ""
         self.aliases: list[str] = []
 
     def seed(self, brand: str, aliases: Iterable[str], competitors: Iterable[str]) -> None:
         self.brand = brand or ""
         self.aliases = [str(a) for a in aliases if a]
+        self._seed_keys = set()
         for term in unique_terms([brand, *self.aliases]):
             self.observe(term)
         for term in unique_terms(competitors):
             self.observe(term)
+            key = self._seed_key_for(term)
+            if key:
+                self._seed_keys.add(key)
+
+    def _seed_key_for(self, raw: str, normalized: str | None = None) -> str:
+        """Canonical key against the seed set only (not run-grown aliases)."""
+        key = normalize_vendor_key(normalized or raw)
+        if not key:
+            return ""
+        if key in self._seed_keys:
+            return key
+        for seed in sorted(self._seed_keys, key=len, reverse=True):
+            if key.startswith(seed) and key[len(seed) :] in _GENERIC_TAILS:
+                return seed
+            if seed.startswith(key) and seed[len(key) :] in _GENERIC_TAILS:
+                return seed
+        return key
+
+    def is_seed(self, raw: str, normalized: str | None = None) -> bool:
+        key = normalize_vendor_key(normalized or raw)
+        if not key:
+            return False
+        return self._seed_key_for(raw, normalized) in self._seed_keys
 
     def key_for(self, raw: str, normalized: str | None = None) -> str:
         return self._canonical_key(normalize_vendor_key(normalized or raw))
@@ -319,32 +346,50 @@ def seed_alias_map(
     return amap
 
 
-def merge_named_vendors(
+def vendor_origin(
+    raw: str,
+    normalized: str | None,
+    alias_map: AliasMap,
+    brand: str,
+    aliases: Iterable[str],
+) -> str | None:
+    """`known` if in the config seed set, `surprise` otherwise. None if brand."""
+    alias_list = list(aliases)
+    if is_brand_vendor(raw, brand, alias_list) or (
+        normalized and is_brand_vendor(normalized, brand, alias_list)
+    ):
+        return None
+    key = alias_map.key_for(raw, normalized)
+    if key and key in brand_keys(brand, alias_list):
+        return None
+    if alias_map.is_seed(raw, normalized):
+        return "known"
+    return "surprise"
+
+
+def merge_classified_vendors(
     llm_items: Iterable[Any],
     regex_names: Iterable[str],
     alias_map: AliasMap,
     brand: str,
     aliases: Iterable[str],
-) -> list[str]:
-    """Deduped display names. LLM first, then regex. Brand + aliases excluded."""
-    out: list[str] = []
+) -> list[dict[str, str]]:
+    """Deduped `{name, origin}` records. LLM first, then regex. Brand excluded."""
+    out: list[dict[str, str]] = []
     seen: set[str] = set()
     alias_list = list(aliases)
 
     def _add(raw: str, normalized: str | None = None) -> None:
         if not (raw or normalized):
             return
-        if is_brand_vendor(raw, brand, alias_list) or (
-            normalized and is_brand_vendor(normalized, brand, alias_list)
-        ):
+        origin = vendor_origin(raw, normalized, alias_map, brand, alias_list)
+        if origin is None:
             return
         key = alias_map.key_for(raw, normalized)
         if not key or key in seen:
             return
-        if key in brand_keys(brand, alias_list):
-            return
         seen.add(key)
-        out.append(alias_map.display_for(raw, normalized))
+        out.append({"name": alias_map.display_for(raw, normalized), "origin": origin})
 
     for item in llm_items or []:
         if isinstance(item, str):
@@ -353,7 +398,49 @@ def merge_named_vendors(
             _add(str(item.get("raw") or ""), str(item.get("normalized") or "") or None)
     for name in regex_names or []:
         _add(str(name))
-    return [n for n in out if n]
+    return [rec for rec in out if rec.get("name")]
+
+
+def merge_named_vendors(
+    llm_items: Iterable[Any],
+    regex_names: Iterable[str],
+    alias_map: AliasMap,
+    brand: str,
+    aliases: Iterable[str],
+) -> list[str]:
+    """Deduped display names. LLM first, then regex. Brand + aliases excluded."""
+    return [rec["name"] for rec in merge_classified_vendors(llm_items, regex_names, alias_map, brand, aliases)]
+
+
+def annotate_vendor_cell(
+    cell: dict[str, Any],
+    alias_map: AliasMap,
+    brand: str,
+    aliases: Iterable[str],
+) -> dict[str, Any]:
+    """Stamp `origin` known|surprise on each vendor item. Drops brand rows."""
+    alias_list = list(aliases)
+    for key in ("vendors", "query_vendors"):
+        kept = []
+        for item in cell.get(key) or []:
+            if isinstance(item, str):
+                item = normalize_vendor_item(item)
+            if not isinstance(item, dict):
+                continue
+            origin = vendor_origin(
+                str(item.get("raw") or ""),
+                str(item.get("normalized") or "") or None,
+                alias_map,
+                brand,
+                alias_list,
+            )
+            if origin is None:
+                continue
+            item = dict(item)
+            item["origin"] = origin
+            kept.append(item)
+        cell[key] = kept
+    return cell
 
 
 def completed_cells(doc: dict[str, Any], engine: str) -> list[dict[str, Any]]:
@@ -385,6 +472,25 @@ def completed_cells(doc: dict[str, Any], engine: str) -> list[dict[str, Any]]:
     return out
 
 
+def classified_vendors_for_arm(
+    arm: dict[str, Any] | None,
+    vendor_cell: dict[str, Any] | None,
+    alias_map: AliasMap,
+    brand: str,
+    aliases: Iterable[str],
+) -> list[dict[str, str]]:
+    if not isinstance(arm, dict):
+        return []
+    cell = vendor_cell if isinstance(vendor_cell, dict) else {}
+    return merge_classified_vendors(
+        cell.get("vendors") or [],
+        arm.get("competitor_mentions") or [],
+        alias_map,
+        brand,
+        aliases,
+    )
+
+
 def named_vendors_for_arm(
     arm: dict[str, Any] | None,
     vendor_cell: dict[str, Any] | None,
@@ -392,12 +498,22 @@ def named_vendors_for_arm(
     brand: str,
     aliases: Iterable[str],
 ) -> list[str]:
+    return [rec["name"] for rec in classified_vendors_for_arm(arm, vendor_cell, alias_map, brand, aliases)]
+
+
+def classified_query_vendors_for_arm(
+    arm: dict[str, Any] | None,
+    vendor_cell: dict[str, Any] | None,
+    alias_map: AliasMap,
+    brand: str,
+    aliases: Iterable[str],
+) -> list[dict[str, str]]:
     if not isinstance(arm, dict):
         return []
     cell = vendor_cell if isinstance(vendor_cell, dict) else {}
-    return merge_named_vendors(
-        cell.get("vendors") or [],
-        arm.get("competitor_mentions") or [],
+    return merge_classified_vendors(
+        cell.get("query_vendors") or [],
+        arm.get("vendors_in_search_queries") or [],
         alias_map,
         brand,
         aliases,
@@ -411,16 +527,7 @@ def query_vendors_for_arm(
     brand: str,
     aliases: Iterable[str],
 ) -> list[str]:
-    if not isinstance(arm, dict):
-        return []
-    cell = vendor_cell if isinstance(vendor_cell, dict) else {}
-    return merge_named_vendors(
-        cell.get("query_vendors") or [],
-        arm.get("vendors_in_search_queries") or [],
-        alias_map,
-        brand,
-        aliases,
-    )
+    return [rec["name"] for rec in classified_query_vendors_for_arm(arm, vendor_cell, alias_map, brand, aliases)]
 
 
 def _brand_in_search_box(
@@ -449,16 +556,17 @@ def _brand_in_search_box(
     return False
 
 
-def who_got_named_counts(
+def named_vendor_counts_by_origin(
     rows: list[dict[str, Any]],
     vendor_store: dict[str, Any],
     *,
     brand: str,
     aliases: Iterable[str],
     alias_map: AliasMap,
-) -> Counter[str]:
-    """Per-cell named-vendor counts. Brand counted only via `brand_mentioned`."""
-    counts: Counter[str] = Counter()
+) -> tuple[Counter[str], Counter[str]]:
+    """Answer-name counts split into known (incl. brand_mentioned) vs surprise."""
+    known: Counter[str] = Counter()
+    surprise: Counter[str] = Counter()
     alias_list = list(aliases)
     store = load_vendor_store(vendor_store)
     for row in rows:
@@ -471,12 +579,72 @@ def who_got_named_counts(
                 if not isinstance(arm, dict) or arm.get("error"):
                     continue
                 if arm.get("brand_mentioned"):
-                    counts[brand] += 1
+                    known[brand] += 1
                 key = f"{pid}|{engine}|{arm_name}"
-                names = named_vendors_for_arm(arm, store.get(key), alias_map, brand, alias_list)
-                for name in names:
-                    counts[name] += 1
-    return counts
+                for rec in classified_vendors_for_arm(arm, store.get(key), alias_map, brand, alias_list):
+                    if rec["origin"] == "surprise":
+                        surprise[rec["name"]] += 1
+                    else:
+                        known[rec["name"]] += 1
+    return known, surprise
+
+
+def who_got_named_counts(
+    rows: list[dict[str, Any]],
+    vendor_store: dict[str, Any],
+    *,
+    brand: str,
+    aliases: Iterable[str],
+    alias_map: AliasMap,
+) -> Counter[str]:
+    """Known seed competitors + brand. Surprises are not in this pile."""
+    known, _ = named_vendor_counts_by_origin(
+        rows, vendor_store, brand=brand, aliases=aliases, alias_map=alias_map
+    )
+    return known
+
+
+def surprise_named_counts(
+    rows: list[dict[str, Any]],
+    vendor_store: dict[str, Any],
+    *,
+    brand: str,
+    aliases: Iterable[str],
+    alias_map: AliasMap,
+) -> Counter[str]:
+    _, surprise = named_vendor_counts_by_origin(
+        rows, vendor_store, brand=brand, aliases=aliases, alias_map=alias_map
+    )
+    return surprise
+
+
+def surprise_frequencies(
+    docs: dict[str, dict[str, Any]],
+    vendor_store: dict[str, Any],
+    *,
+    brand: str,
+    aliases: Iterable[str],
+    competitors: Iterable[str],
+) -> list[tuple[str, int]]:
+    """High-frequency surprises across a run, for the board judge."""
+    store = load_vendor_store(vendor_store)
+    amap = seed_alias_map(brand, aliases, competitors, store.values())
+    counts: Counter[str] = Counter()
+    for engine, doc in docs.items():
+        if not isinstance(doc, dict):
+            continue
+        for cell in completed_cells(doc, str(engine)):
+            recs = merge_classified_vendors(
+                (store.get(cell["key"]) or {}).get("vendors") or [],
+                cell.get("competitor_mentions") or [],
+                amap,
+                brand,
+                aliases,
+            )
+            for rec in recs:
+                if rec["origin"] == "surprise":
+                    counts[rec["name"]] += 1
+    return counts.most_common(16)
 
 
 def search_box_vendor_counts(

@@ -14,14 +14,16 @@
       {
         "raw": "string as written",
         "normalized": "stable display name",
-        "role": "recommend|mention|warn|reject|aside"
+        "role": "recommend|mention|warn|reject|aside",
+        "origin": "known|surprise"
       }
     ],
     "query_vendors": [
       {
         "raw": "string as written in a search query",
         "normalized": "stable display name",
-        "role": "recommend|mention|warn|reject|aside"
+        "role": "recommend|mention|warn|reject|aside",
+        "origin": "known|surprise"
       }
     ],
     "confidence": "0..1",

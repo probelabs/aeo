@@ -19,9 +19,12 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from aeo.vendors import (  # noqa: E402
+    annotate_vendor_cell,
     completed_cells,
     load_vendor_store,
     normalize_vendor_cell,
+    seed_alias_map,
+    surprise_frequencies,
     workspace_from_docs,
 )
 
@@ -66,6 +69,7 @@ Return ONLY JSON:
 }}
 Rules:
 - Prefer gaps: named but last/aside/reject; classes with 0 mentions; engines that never search; vendors always ahead of {brand}.
+- Surprise competitors (named in answers but not on the config seed list) are a first-class gap. High-frequency surprises should get an action: review them, decide whether to add the repeats to the next run's seed list, and treat the category as an incumbent you did not expect.
 - Do not invent pages or features. Do not mention Tyk marketing slogans.
 - No more than 7 actions. Rank by expected AEO lift.
 
@@ -260,7 +264,12 @@ def claude_judge(query: str, answer: str) -> dict | None:
     return None
 
 
-def summarize_for_board(run: Path, store: dict, docs: dict | None = None) -> tuple[str, str]:
+def summarize_for_board(
+    run: Path,
+    store: dict,
+    docs: dict | None = None,
+    vendor_store: dict | None = None,
+) -> tuple[str, str]:
     counts = []
     samples = []
     ahead_c = Counter()
@@ -306,11 +315,23 @@ def summarize_for_board(run: Path, store: dict, docs: dict | None = None) -> tup
     counts.append("position " + json.dumps(dict(pos_c)))
     counts.append("ahead " + json.dumps(ahead_c.most_common(12)))
     counts.append("class " + json.dumps({k: dict(v) for k, v in list(by_class.items())[:40]}))
+    if docs:
+        brand, aliases, competitors = workspace_from_docs(docs)
+        surprises = surprise_frequencies(
+            docs,
+            vendor_store or {},
+            brand=brand or BRAND,
+            aliases=aliases,
+            competitors=competitors,
+        )
+        counts.append("surprises " + json.dumps(surprises))
+        counts.append("surprise_mentions " + str(sum(n for _, n in surprises)))
     return "\n".join(counts), "\n".join(samples[:40])
 
 
 def board_judge(run: Path, store: dict, docs: dict | None = None) -> dict | None:
-    counts, samples = summarize_for_board(run, store, docs)
+    vstore = load_vendor_store(load_store(run / "vendors_judged.json"))
+    counts, samples = summarize_for_board(run, store, docs, vstore)
     prompt = BOARD_PROMPT.format(brand=BRAND, counts=counts, samples=samples)
     for _ in range(2):
         try:
@@ -417,6 +438,7 @@ def run_vendor_pass(
     outp = out_dir / "vendors_judged.json"
     store = load_vendor_store(load_store(outp))
     _, aliases, competitors = workspace_from_docs(docs)
+    amap = seed_alias_map(brand, aliases, competitors)
     todo = []
     for e in engines:
         doc = docs.get(e)
@@ -442,10 +464,14 @@ def run_vendor_pass(
             print("  FAIL", flush=True)
             fails += 1
             continue
+        judged = annotate_vendor_cell(judged, amap, brand, aliases)
         store[cell["key"]] = judged
         outp.write_text(json.dumps(store, indent=2))
-        names = [v.get("normalized") or v.get("raw") for v in judged.get("vendors") or []]
-        print(f"  n={len(names)} {', '.join(str(x) for x in names[:8])}", flush=True)
+        labeled = [
+            f"{v.get('normalized') or v.get('raw')}({v.get('origin') or '?'})"
+            for v in judged.get("vendors") or []
+        ]
+        print(f"  n={len(labeled)} {', '.join(labeled[:8])}", flush=True)
     print(f"wrote {outp} n={len(store)} fails={fails}", flush=True)
     return fails
 
