@@ -93,8 +93,11 @@ Start with `--class all` for a baseline. Use `--class focus` for later content c
 
 ```bash
 python3 -m aeo run --config aeo.config.json --class all --engine all --arm both
+python3 -m aeo run --config aeo.config.json --class all --engine all --arm both --concurrency 4
 python3 -m aeo run --config aeo.config.json --class focus --engine all --arm both
 ```
+
+`--concurrency N` (default 1) parallelizes remaining cells inside one process. `--engine all` is still one process. Do not fake parallelism with several `aeo run` processes on the same `--out` — that overwrites evidence. Workers write `<out>.parts/` shards; the parent merges them (existing cells win). Compatible with `--out` resume and `--only-id`.
 
 `aeo init --brand Acme` is a starter, not a generic competitor list. Edit incumbents before you trust the board.
 
@@ -230,10 +233,10 @@ Wilson CI on invested cells only
 watch queries stay on a slower cadence — still on the roster
 ```
 
-Do not wait for a monthly ritual. Do not restart an in-flight full-grid run. There is no site "generator/gates" in this repo: lint the article against the capture, then deploy.
+Do not wait for a monthly ritual. Do not restart an in-flight full-grid run. Do not share `--out` across processes; raise `--concurrency` instead. There is no site "generator/gates" in this repo: lint the article against the capture, then deploy.
 
 ```bash
-python3 -m aeo run --config aeo.config.json --class all --engine all --arm both
+python3 -m aeo run --config aeo.config.json --class all --engine all --arm both --concurrency 4
 python3 -m aeo board aeo-data/runs/<run_id>.json
 
 # one roster seed, both arms (does NOT run the grid)
@@ -249,7 +252,7 @@ python3 -m aeo run --config aeo.config.json \
   --engine all --arm both
 ```
 
-`--prompt-id` does **not** select a roster row. `--only-id` does. Repeat `--only-id` for several seeds.
+`--prompt-id` does **not** select a roster row. `--only-id` does. Repeat `--only-id` for several seeds. Speed a full grid with `--concurrency N` in that one process, not a second process on the same `--out`.
 
 ---
 
@@ -268,6 +271,7 @@ python3 -m aeo run --config aeo.config.json \
 - Dropping watch queries because the incumbent won.
 - A second dump after the first one failed to get cited.
 - One new slug per ⚠ vendor or per seed phrasing.
+- Sharing one `--out` across multiple `aeo run` processes. Use `--concurrency N` in one process.
 
 ---
 

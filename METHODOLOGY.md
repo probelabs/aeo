@@ -83,6 +83,14 @@ A search arm that never searched is not a failure of the harness. It is a measur
 
 Default `samples_per_arm = 1`. Local CLIs are slow. Set `N > 1` only when you need a jitter read. Multiple samples are multiple raw rows, not a reason to discard the first.
 
+## Concurrency
+
+`aeo run --concurrency N` (default 1) runs up to N remaining cells (prompt × sample × engine × arm) in **one process**. `--engine all` stays one process; engines share that pool.
+
+Workers never write `--out`. Each completed cell is a shard under `<out>.parts/`; the parent unions shards into `--out` after every cell. An existing cell is never overwritten (resume / skip-completed). Leftover shards from a killed run are merged on the next `--out` resume before new work is planned.
+
+Do not share one `--out` across multiple `aeo run` processes. That is a lost-update race. Use `--concurrency` instead.
+
 ## Schema
 
 Evidence documents validate against `schemas/aeo-cli-evidence-v1.json`. Config against `schemas/aeo-cli-config-v1.json`. The generic workspace is brand + aliases + competitors + query list. XERJ is the first example, not the only brand.

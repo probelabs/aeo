@@ -37,11 +37,12 @@ python3 -m aeo init --brand Acme --domain acme.example --out aeo.config.json
 python3 -m aeo init --from-example xerj --out aeo.config.json
 
 python3 -m aeo run --config aeo.config.json --engine all --arm both
+python3 -m aeo run --config aeo.config.json --engine all --arm both --concurrency 4
 python3 -m aeo board aeo-data/runs/<run_id>.json
 python3 -m aeo report --html --out report.html aeo-data/runs/<run_id>.json
 ```
 
-`--dry-run` prints the exact `claude` / `codex` / `grok` command and exits. `--only-id` re-runs one roster seed. `--samples N` repeats that invocation (default `n=1`; local CLIs are slow).
+`--dry-run` prints the exact `claude` / `codex` / `grok` command and exits. `--only-id` re-runs one roster seed. `--samples N` repeats that invocation (default `n=1`; local CLIs are slow). `--concurrency N` (default 1) runs up to N remaining cells in **one** process; workers write temp shards and the parent merges them into `--out` so resume cannot drop a cell. Do not share one `--out` across multiple `aeo run` processes.
 
 Never put the brand, a stack word, or an incumbent into a **core** prompt. If the model injects those into its own search call, that is a finding.
 

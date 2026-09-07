@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -99,3 +100,87 @@ def iter_evidence_files(path: str | Path) -> list[Path]:
     if not files:
         files = sorted((p / "runs").glob("*.json")) if (p / "runs").is_dir() else []
     return [f for f in files if f.name != "example-run.json" or True]
+
+
+def prompt_entry_key(entry: dict[str, Any]) -> tuple[str, int]:
+    """Identity for a prompt row: prompt_id + sample_index (missing index = 1)."""
+    pid = str(entry.get("prompt_id") or "")
+    raw = entry.get("sample_index")
+    if raw is None:
+        return (pid, 1)
+    return (pid, int(raw))
+
+
+def parts_dir_for(out: str | Path) -> Path:
+    """Per-run shard directory next to `--out` (never written by workers as `--out`)."""
+    p = Path(out)
+    return p.parent / f"{p.name}.parts"
+
+
+def iter_shard_files(parts_dir: str | Path) -> list[Path]:
+    root = Path(parts_dir)
+    if not root.is_dir():
+        return []
+    return sorted(p for p in root.glob("*.json") if not p.name.endswith(".tmp"))
+
+
+def cell_shard_name(prompt_id: str, sample_index: int, engine: str, arm: str) -> str:
+    safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in prompt_id)[:80]
+    return f"{safe}__{sample_index}__{engine}__{arm}__{uuid4().hex[:8]}.json"
+
+
+def cell_shard_document(
+    base: dict[str, Any],
+    entry: dict[str, Any],
+) -> dict[str, Any]:
+    """One-prompt document used as a worker shard. Same run_id as the parent."""
+    return {
+        "schema_version": base.get("schema_version") or EVIDENCE_SCHEMA_VERSION,
+        "workspace": copy.deepcopy(base.get("workspace") or {}),
+        "run": copy.deepcopy(base.get("run") or {}),
+        "prompts": [copy.deepcopy(entry)],
+    }
+
+
+def union_documents(base: dict[str, Any], *shards: dict[str, Any]) -> dict[str, Any]:
+    """Merge same-run shards into base.
+
+    Existing prompt×engine×arm cells in *base* win (resume / skip-completed).
+    Prompt order follows *base*, then first-seen extras from shards.
+    Run metadata stays that of *base* (unlike report-time ``merge_docs``).
+    """
+    out = copy.deepcopy(base)
+    prompts = list(out.get("prompts") or [])
+    index: dict[tuple[str, int], int] = {}
+    for i, entry in enumerate(prompts):
+        if isinstance(entry, dict):
+            index[prompt_entry_key(entry)] = i
+    for shard in shards:
+        if not isinstance(shard, dict):
+            continue
+        for prompt in shard.get("prompts") or []:
+            if not isinstance(prompt, dict):
+                continue
+            key = prompt_entry_key(prompt)
+            if key not in index:
+                new_entry = copy.deepcopy(prompt)
+                new_entry.setdefault("engines", {})
+                index[key] = len(prompts)
+                prompts.append(new_entry)
+                continue
+            dest = prompts[index[key]]
+            dest.setdefault("engines", {})
+            src_engines = prompt.get("engines") or {}
+            if not isinstance(src_engines, dict) or not isinstance(dest["engines"], dict):
+                continue
+            for engine, arms in src_engines.items():
+                if not isinstance(arms, dict):
+                    continue
+                dest_arms = dest["engines"].setdefault(engine, {})
+                if not isinstance(dest_arms, dict):
+                    continue
+                for arm_name, arm in arms.items():
+                    if arm_name not in dest_arms:
+                        dest_arms[arm_name] = copy.deepcopy(arm)
+    out["prompts"] = prompts
+    return out
