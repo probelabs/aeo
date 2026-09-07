@@ -38,17 +38,19 @@ A mention that follows "this looks like an AEO eval" / "I'll read the local prot
 
 ## Fields
 
-All extraction is deterministic: case-insensitive word-boundary regex. Raw samples are the source of truth; scores are views.
+Brand mention, search-tool detection, and the configured-list competitor regex are deterministic: case-insensitive word-boundary regex. Raw samples are the source of truth; scores are views. Competitor *discovery* is a separate post-run LLM pass — config `competitors` are bootstrap / alias hints, not a ceiling.
 
-**mention** — whole-word brand or alias in *answer text*. Not a substring (`xerj` does not match `xerjified`). A domain-style alias as the host (or www.host) of an http(s) URL counts (`https://xerj.org/docs` is a `xerj.org` mention). Tokens that appear only in a URL path or query do not. Bare generic words that are not aliases still do not count.
+**mention** — whole-word brand or alias in *answer text*. Not a substring (`xerj` does not match `xerjified`). A domain-style alias as the host (or www.host) of an http(s) URL counts (`https://xerj.org/docs` is a `xerj.org` mention). Tokens that appear only in a URL path or query do not. Bare generic words that are not aliases still do not count. This bit is never replaced by an LLM.
 
-**competitors in answer** — same matcher over the configured competitor names.
+**competitors in answer** (`competitor_mentions`) — same matcher over the configured competitor names. Cheap signal only. Names that are not on the list (e.g. UserCheck when the list has Kickbox) are invisible here.
+
+**named vendors** (`vendors_judged.json`) — post-run LLM extract over every completed arm (knowledge + search, hits and misses; skip errors/empty). Returns normalized product names (and optional role). HTML “Who got named” / miss-drawer “Named instead” prefer this list, union the regex `competitor_mentions`. Brand + aliases are filtered out so Autheona / Tyk / Proof are not double-counted as competitors. Re-runs are keyed `prompt_id|engine|arm` and skip completed cells.
 
 **searched** — bool. True if the CLI transcript contains a search tool call or a vendor `web_search_requests` count > 0.
 
 **search_queries** — exact tool-call strings (Claude `WebSearch`/`WebFetch` input, Codex `item.type == "web_search"` `action.queries[]`, Grok `web_search` / `web_fetch`). Not paraphrases.
 
-**vendors_in_search_queries** — brand / alias / competitor names that appear as whole words inside those tool-call strings. This is pre-search belief: the model already chose vendors before looking.
+**vendors_in_search_queries** — brand / alias / competitor names that appear as whole words inside those tool-call strings. This is pre-search belief for board ⚠ / `vendor_prebelief_rate`: still regex over the configured list. Judge HTML search-vendor bars additionally union an LLM extract of those same query strings (`query_vendors`) so an unlisted vendor still appears.
 
 **recommended** — v1: same as brand mentioned in the answer (including domain-host URL citations).
 

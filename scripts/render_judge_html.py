@@ -2,10 +2,23 @@
 """Tyk AEO HTML: board actions on top, stance-colored K/S grid, quotes in the drawer."""
 from __future__ import annotations
 
-import html, json, os
-from collections import defaultdict
-from datetime import datetime, timezone
+import html, json, os, sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from aeo.vendors import (  # noqa: E402
+    load_vendor_store,
+    named_vendors_for_arm,
+    query_vendors_for_arm,
+    search_box_vendor_counts,
+    seed_alias_map,
+    who_got_named_counts,
+    workspace_from_docs,
+)
 
 ENGINES = ("claude", "codex", "grok")
 ARMS = ("knowledge", "search")
@@ -27,6 +40,7 @@ def harness_block(
     quote: str = "",
     ahead: list | None = None,
     competitors: list | None = None,
+    query_vendors: list | None = None,
     arm: dict | None = None,
 ) -> str:
     """One drawer card: summary line + collapsible raw answer."""
@@ -50,7 +64,7 @@ def harness_block(
         searched = ""
         if arm_name == "search":
             if arm.get("searched"):
-                vq = arm.get("vendors_in_search_queries") or []
+                vq = query_vendors if query_vendors is not None else (arm.get("vendors_in_search_queries") or [])
                 vqs = ", ".join(str(x) for x in vq[:8])
                 searched = " Searched." + (f" Vendors in box: {esc(vqs)}." if vqs else "")
             else:
@@ -87,21 +101,38 @@ def harness_block(
     bits.append("</div>")
     return "".join(bits)
 
-def load(run: Path) -> tuple[dict[str, dict], dict, dict]:
+def _read_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    raw = json.loads(path.read_text())
+    return raw if isinstance(raw, dict) else {}
+
+
+def load(run: Path) -> tuple[dict[str, dict], dict, dict, dict]:
     docs = {}
-    for e in ENGINES:
-        p = run / f"{e}.json"
-        if p.exists():
-            docs[e] = json.loads(p.read_text())
-    judge = {}
-    jp = run / "judge.json"
-    if jp.exists():
-        judge = json.loads(jp.read_text())
-    board = {}
-    bp = run / "board.json"
-    if bp.exists():
-        board = json.loads(bp.read_text())
-    return docs, judge, board
+    if run.is_file():
+        doc = json.loads(run.read_text())
+        found: set[str] = set()
+        for pr in doc.get("prompts") or []:
+            found.update((pr.get("engines") or {}).keys())
+        for e in ENGINES:
+            if e in found or run.stem.lower() == e:
+                docs[e] = doc
+        out_dir = run.parent
+    else:
+        out_dir = run
+        for e in ENGINES:
+            p = run / f"{e}.json"
+            if p.exists():
+                docs[e] = json.loads(p.read_text())
+    judge = _read_json(out_dir / "judge.json")
+    board = _read_json(out_dir / "board.json")
+    vendors = _read_json(out_dir / "vendors_judged.json")
+    if run.is_file():
+        sibling = run.with_name(run.stem + ".vendors_judged.json")
+        if sibling.exists():
+            vendors = _read_json(sibling)
+    return docs, judge, board, vendors
 
 
 def merge_rows(docs: dict[str, dict]) -> list[dict]:
@@ -123,7 +154,7 @@ def merge_rows(docs: dict[str, dict]) -> list[dict]:
     return [by_id[i] for i in order]
 
 
-def cell_view(arm: dict | None, j: dict | None, searched_arm: bool) -> dict:
+def cell_view(arm: dict | None, j: dict | None, searched_arm: bool, named: list | None = None) -> dict:
     if not isinstance(arm, dict) or arm.get("error"):
         return {"kind": "none"}
     mentioned = bool(arm.get("brand_mentioned"))
@@ -136,7 +167,7 @@ def cell_view(arm: dict | None, j: dict | None, searched_arm: bool) -> dict:
         "quote": (j or {}).get("quote") or "",
         "ahead": (j or {}).get("ahead") or [],
         "searched": bool(arm.get("searched")) if searched_arm else None,
-        "competitors": arm.get("competitor_mentions") or [],
+        "competitors": named if named is not None else (arm.get("competitor_mentions") or []),
     }
 
 
@@ -181,15 +212,15 @@ def rates(docs, judge, rows):
 
 
 def render(run: Path) -> str:
-    docs, judge, board = load(run)
+    docs, judge, board, vendors_raw = load(run)
     rows = merge_rows(docs)
     eng_rates = rates(docs, judge, rows)
-    brand = os.environ.get("AEO_BRAND") or "Tyk"
-    for _e, doc in docs.items():
-        ws = doc.get("workspace") or {}
-        if ws.get("brand"):
-            brand = str(ws["brand"])
-            break
+    ws_brand, aliases, competitors = workspace_from_docs(docs)
+    brand = os.environ.get("AEO_BRAND") or ws_brand or "Tyk"
+    if ws_brand:
+        brand = ws_brand
+    vendor_store = load_vendor_store(vendors_raw)
+    alias_map = seed_alias_map(brand, aliases, competitors, vendor_store.values())
     n_cells = sum(len((docs.get(e) or {}).get("prompts") or []) * 2 for e in ENGINES)
     # overall search mention / recommend / first among search hits
     sm = sc = rec = fir = wrn = 0
@@ -260,9 +291,12 @@ def render(run: Path) -> str:
         "<article><h3>Searched + vendors in box</h3>"
         "<p><b>Searched</b> = the search arm actually fired a search tool. "
         "<b>Vendors typed into search</b> counts names inside those tool queries "
-        f"(prebelief), including {esc(brand)} when an alias appears.</p>"
+        f"(LLM extract ∪ regex over brand/aliases/config competitors), including {esc(brand)} "
+        "when an alias appears. Board ⚠ / <code>vendors_in_search_queries</code> stay regex-only.</p>"
         "<p class='ex'><b>Example.</b> Tool query “Kong vs Apigee vs Tyk rate limiting” "
-        "counts all three in the search-vendor bars, even if the answer later drops Tyk.</p></article>"
+        "counts all three in the search-vendor bars, even if the answer later drops Tyk. "
+        "A query that only says “UserCheck email verification” still counts UserCheck "
+        "after the vendor pass, even if UserCheck was not in config.</p></article>"
     )
     parts.append("</div></section>")
 
@@ -317,47 +351,13 @@ def render(run: Path) -> str:
     parts.append("</section>")
 
 
-    # name fan-out: brand + competitors in answers; brand + vendors in search box
-    from collections import Counter
-    aliases = {brand.lower()}
-    for _e, doc in docs.items():
-        ws = doc.get("workspace") or {}
-        for a in ws.get("aliases") or []:
-            aliases.add(str(a).lower())
-        if ws.get("brand"):
-            aliases.add(str(ws["brand"]).lower())
-
-    def is_brand(name: str) -> bool:
-        n = (name or "").lower()
-        return any(a == n or a in n or n in a for a in aliases if a)
-
-    comp_counts = Counter()
-    search_vendor_counts = Counter()
-    for row in rows:
-        for e in ENGINES:
-            arms = row["engines"].get(e) or {}
-            for arm_name in ARMS:
-                arm = arms.get(arm_name)
-                if not isinstance(arm, dict) or arm.get("error"):
-                    continue
-                if arm.get("brand_mentioned"):
-                    comp_counts[brand] += 1
-                for c in arm.get("competitor_mentions") or []:
-                    c = str(c)
-                    if is_brand(c):
-                        continue  # already counted via brand_mentioned
-                    comp_counts[c] += 1
-                if arm_name == "search":
-                    vend = [str(v) for v in (arm.get("vendors_in_search_queries") or [])]
-                    # also scan raw search queries for brand aliases
-                    qs = " ".join(str(q) for q in (arm.get("search_queries") or [])).lower()
-                    brand_in_box = any(a in qs for a in aliases if len(a) >= 3) or any(is_brand(v) for v in vend)
-                    if brand_in_box:
-                        search_vendor_counts[brand] += 1
-                    for v in vend:
-                        if is_brand(v):
-                            continue
-                        search_vendor_counts[v] += 1
+    # name fan-out: brand via brand_mentioned; others via LLM extract ∪ regex
+    comp_counts = who_got_named_counts(
+        rows, vendor_store, brand=brand, aliases=aliases, alias_map=alias_map
+    )
+    search_vendor_counts = search_box_vendor_counts(
+        rows, vendor_store, brand=brand, aliases=aliases, alias_map=alias_map
+    )
 
     def vendor_rows(counts: Counter, *, brand_name: str) -> str:
         if not counts:
@@ -383,8 +383,10 @@ def render(run: Path) -> str:
 
     parts.append("<h2>Who got named</h2>")
     parts.append(
-        f"<p class='hint'>{esc(brand)} (from brand_mentioned) plus competitor names in answer text. "
-        "All engines, both arms. Not the same as search-box prebelief.</p>"
+        f"<p class='hint'>{esc(brand)} (from deterministic <code>brand_mentioned</code>) plus product "
+        "names in the answer: LLM vendor extract, union config-list regex. "
+        "All engines, both arms. Config <code>competitors</code> are hints, not a ceiling. "
+        "Not the same as search-box prebelief.</p>"
     )
     parts.append("<div class='vendor-bars'>")
     parts.append(vendor_rows(comp_counts, brand_name=brand))
@@ -392,8 +394,10 @@ def render(run: Path) -> str:
 
     parts.append("<h2>Vendors typed into search</h2>")
     parts.append(
-        f"<p class='hint'>Names inside search tool queries (search arm only), including {esc(brand)} "
-        "when an alias appeared in the query box.</p>"
+        f"<p class='hint'>Names inside search tool queries (search arm only): LLM extract of the "
+        f"query strings, union regex over brand/aliases/config competitors, including {esc(brand)} "
+        "when an alias appeared in the query box. Evidence <code>vendors_in_search_queries</code> "
+        "and board ⚠ stay regex-only.</p>"
     )
     parts.append("<div class='vendor-bars'>")
     if search_vendor_counts:
@@ -426,7 +430,22 @@ def render(run: Path) -> str:
             for arm_name, letter in (("knowledge", "K"), ("search", "S")):
                 arm = arms.get(arm_name)
                 j = judge.get(f"{row['prompt_id']}|{e}|{arm_name}")
-                v = cell_view(arm, j, arm_name == "search")
+                vkey = f"{row['prompt_id']}|{e}|{arm_name}"
+                named = named_vendors_for_arm(
+                    arm if isinstance(arm, dict) else None,
+                    vendor_store.get(vkey),
+                    alias_map,
+                    brand,
+                    aliases,
+                )
+                qnamed = query_vendors_for_arm(
+                    arm if isinstance(arm, dict) else None,
+                    vendor_store.get(vkey),
+                    alias_map,
+                    brand,
+                    aliases,
+                )
+                v = cell_view(arm, j, arm_name == "search", named)
                 st = v.get("stance") or ""
                 kind = v.get("kind")
                 cls = "miss" if kind == "miss" else {"recommend":"rec","mention":"men","warn":"wrn","reject":"rej"}.get(st, "men")
@@ -453,6 +472,7 @@ def render(run: Path) -> str:
                         quote=v.get("quote") or "",
                         ahead=v.get("ahead") or [],
                         competitors=v.get("competitors") or [],
+                        query_vendors=qnamed,
                         arm=arm if isinstance(arm, dict) else None,
                     )
                 )
@@ -579,9 +599,30 @@ document.querySelectorAll('.chip').forEach((c)=>{
 """
 
 
-def main():
-    run = Path(os.environ.get("AEO_TYK_RUN") or str(Path.home() / ".aeo/runs/tyk100-20260901"))
-    html_out = run / "tyk100-20260901-report.html"
+def main(argv: list[str] | None = None):
+    args = list(sys.argv[1:] if argv is None else argv)
+    run = None
+    for a in args:
+        if a in ("-h", "--help"):
+            print(
+                "Usage: render_judge_html.py [run_dir_or_evidence.json]\n"
+                "Env: AEO_BRAND, AEO_RUN or AEO_TYK_RUN"
+            )
+            return
+        if not a.startswith("-"):
+            run = Path(a)
+            break
+    if run is None:
+        run = Path(
+            os.environ.get("AEO_RUN")
+            or os.environ.get("AEO_TYK_RUN")
+            or str(Path.home() / ".aeo/runs/tyk100-20260901")
+        )
+    out_dir = run if run.is_dir() else run.parent
+    html_out = out_dir / f"{(run if run.is_dir() else run).name}-report.html"
+    # Keep the historical Tyk default filename when using that run dir.
+    if run.is_dir() and run.name == "tyk100-20260901":
+        html_out = run / "tyk100-20260901-report.html"
     html_out.write_text(render(run))
     print("wrote", html_out)
 
