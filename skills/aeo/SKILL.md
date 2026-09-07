@@ -52,7 +52,7 @@ python3 -m aeo run --config aeo.config.json \
 python3 -m aeo run --config aeo.config.json --engine all --arm both
 ```
 
-Default `samples_per_arm` is 1 (CLIs are slow). Pass `--samples N` for jitter on **this** invocation (it is not a per-id config field). `--only-id ID` (repeatable) filters the roster; `--prompt-id` only labels `--prompt`.
+Default `samples_per_arm` is 1 (CLIs are slow). Pass `--samples N` for jitter on **this** invocation (it is not a per-id config field). `--only-id ID` (repeatable) filters the roster; `--prompt-id` only labels `--prompt`. `--concurrency N` (default 1) runs up to N remaining cells in this process (`--engine all` stays one process). Workers write `<out>.parts/` shards; the parent merges into `--out` (existing cells win). Do not share `--out` across processes.
 
 ## Roster
 
@@ -60,7 +60,7 @@ Keep the **full roster**. Do not drop watch queries because the incumbent won. U
 
 ```bash
 python3 -m aeo run --config aeo.config.json --class focus --engine all --arm both
-python3 -m aeo run --config aeo.config.json --class all --engine all --arm both
+python3 -m aeo run --config aeo.config.json --class all --engine all --arm both --concurrency 4
 python3 -m aeo board aeo-data/runs/<run_id>.json
 ```
 
@@ -79,6 +79,8 @@ For a decision-maker scoreboard (and agent JSON), use `python3 -m aeo board` —
 Append-only. Each run writes a new file:
 
 `{data_dir}/runs/{run_id}.json`
+
+`--out` resume skips completed prompt×engine×arm cells. `--concurrency N` workers write `{out}.parts/` shards; the parent merges those into `--out` (existing cells win). Do not point two processes at the same `--out`.
 
 Validates against `schemas/aeo-cli-evidence-v1.json`.
 

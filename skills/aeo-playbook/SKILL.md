@@ -33,13 +33,13 @@ Do not use this to run the full grid (that is [aeo](../aeo/SKILL.md)) or only to
 
 ## Next action
 
-1. If there is no current board, `python3 -m aeo board aeo-data/runs/<run_id>.json`. Always pass the path. If there is no run, `python3 -m aeo run --config aeo.config.json --class all --engine all --arm both`.
+1. If there is no current board, `python3 -m aeo board aeo-data/runs/<run_id>.json`. Always pass the path. If there is no run, `python3 -m aeo run --config aeo.config.json --class all --engine all --arm both --concurrency 4`. One process; do not share `--out` across processes.
 2. Read the board JSON for calls (`win` / `gap` / `search-blind` / `trap`) and cells. Do not narrate raw answers.
 3. Fan-out is **not** on the board. Open the evidence file and frequency-count `engines.*.search.search_queries`. Drop hapaxes. Split confirmation (`vendors_in_search_queries` names an incumbent, not the brand) vs discovery (no configured vendor in the tool-call string). A confirmation *name* without the literal string is not a brief.
 4. Before blaming content: name the candidate URL from the **sitemap** (not a guessed seed id). `curl` it. Reject homepage-sized 200s, homepage ETag, 308-to-`/`, `.html` hops, `noindex`, canonical=`/`. Then same-backend check: that engine's search arm (never `--bare`) with the **literal** fan-out string, plus `site:<domain>/<path>` and a branded H1 query. Homepage / `llms.txt` / GitHub do not count. Bing/Brave "fetched" or a VPS SERP scrape is not this check. If the URL is missing there, consoles + sitemap + IndexNow, then wait — do not draft. Full tree: [PLAYBOOK.md](../../PLAYBOOK.md) §11.
 5. A page is allowed only if all three hold: repeating fan-out (or `gap` + discovery); you looked at what those tool calls retrieve today; you can publish primary evidence **this product can produce** and will publish losses. One URL per cluster, not per string and not per ⚠ vendor. If a capability URL already answers it, edit that URL.
 6. No capture yet → stop. Freeze the protocol (inputs, versions, task list, content-addressed snapshot) first. Protocol matches the product. Do not invent a file-tree bake-off or MCP JSON for a product that does not ship those.
-7. After a ship and a same-backend check: re-run the affected **roster ids** with `--only-id` (repeatable). `--prompt-id` is only a label for `--prompt`. Raise n with `--samples 20` on that invocation only. n=20 × 3 engines × 2 arms = 120 cold starts per query.
+7. After a ship and a same-backend check: re-run the affected **roster ids** with `--only-id` (repeatable). `--prompt-id` is only a label for `--prompt`. Raise n with `--samples 20` on that invocation only. n=20 × 3 engines × 2 arms = 120 cold starts per query. Use `--concurrency` on that one process if you parallelize cells.
 8. Keep the full roster. Do not drop watch queries. Do not inject the brand or incumbents into core seeds. Confirmation-probe satellites (`Foo vs Bar`) are not briefs. Do not restart an in-flight full-grid run.
 
 ## Calls → action
@@ -69,7 +69,7 @@ Do not use this to run the full grid (that is [aeo](../aeo/SKILL.md)) or only to
 
 ## Anti-patterns (stop)
 
-A mention after "this is an AEO eval" / reading `~/.aeo` is contaminated — isolate cwd, Grok `--sandbox strict`. Injecting the brand into core seeds. Treating `searched = false` as a harness bug. Treating confirmation as discovery. One slug per ⚠ or per seed. A second dump. `FAQPage` / `HowTo` / star-rating JSON-LD. Logging consumer LLM accounts from a VPS. Using `--prompt-id` as a roster filter.
+A mention after "this is an AEO eval" / reading `~/.aeo` is contaminated — isolate cwd, Grok `--sandbox strict`. Injecting the brand into core seeds. Treating `searched = false` as a harness bug. Treating confirmation as discovery. One slug per ⚠ or per seed. A second dump. `FAQPage` / `HowTo` / star-rating JSON-LD. Logging consumer LLM accounts from a VPS. Using `--prompt-id` as a roster filter. Sharing `--out` across processes (use `--concurrency` instead).
 
 ## Reason after the board
 

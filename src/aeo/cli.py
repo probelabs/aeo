@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +19,7 @@ from aeo.board import (
     _brand_terms,
 )
 from aeo.config import Config, filter_prompts, load_config, starter_config, write_config
-from aeo.engines import build_invocation, format_command, run_invocation
+from aeo.engines import build_invocation, format_command
 from aeo.evidence import (
     default_out_path,
     iter_evidence_files,
@@ -29,9 +28,8 @@ from aeo.evidence import (
     new_run_id,
     write_document,
 )
-from aeo.parsers import parse_engine
 from aeo.report import render_doc
-from aeo.score import score_arm
+from aeo.runner import plan_remaining, recover_shards, run_jobs
 from aeo.validate import validate_config, validate_evidence
 
 EXAMPLE_XERJ = Path(__file__).resolve().parents[2] / "examples" / "xerj" / "aeo.config.json"
@@ -91,6 +89,17 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--timeout", type=int, default=300)
     p_run.add_argument("--retries", type=int, default=2, help="Retries per cell after timeout or CLI error (default 2)")
     p_run.add_argument("--samples", type=int, help="Override samples_per_arm")
+    p_run.add_argument(
+        "--concurrency",
+        type=_concurrency_type,
+        default=1,
+        metavar="N",
+        help=(
+            "Max parallel cells in this process (default 1). Workers write temp shards; "
+            "the parent merges them into --out so completed cells are not lost. "
+            "--engine all stays one process. Do not share --out across processes."
+        ),
+    )
 
     p_rep = sub.add_parser("report", help="Print a table from evidence JSON")
     p_rep.add_argument("path", nargs="*", help="Evidence file(s) or data dir")
@@ -154,6 +163,16 @@ def _resolve_config(path: str | None) -> Config:
     raise FileNotFoundError("no --config given and no aeo.config.json in cwd")
 
 
+def _concurrency_type(value: str) -> int:
+    try:
+        n = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("concurrency must be an integer") from exc
+    if n < 1:
+        raise argparse.ArgumentTypeError("concurrency must be >= 1")
+    return n
+
+
 def _prompt_payload(p: Any) -> dict[str, Any]:
     return {
         "id": p.id,
@@ -162,48 +181,6 @@ def _prompt_payload(p: Any) -> dict[str, Any]:
         "class": p.class_,
         "why": p.why,
     }
-
-
-def _find_entry(doc: dict[str, Any], prompt_id: str, sample_index: int, samples: int) -> dict[str, Any] | None:
-    for entry in doc.get("prompts") or []:
-        if entry.get("prompt_id") != prompt_id:
-            continue
-        if samples > 1 and int(entry.get("sample_index") or 1) != sample_index:
-            continue
-        return entry
-    return None
-
-
-def _cell_done(entry: dict[str, Any], engine: str, arm: str) -> bool:
-    got = ((entry.get("engines") or {}).get(engine) or {})
-    return arm in got
-
-
-def _should_retry(error: str | None) -> bool:
-    if not error:
-        return False
-    if "CLI not found" in error or "failed to start" in error:
-        return False
-    return True
-
-
-def _run_cell(engine: str, arm: str, prompt_id: str, inv: Any, timeout: int, retries: int) -> Any:
-    last = None
-    attempts = max(0, int(retries)) + 1
-    for attempt in range(attempts):
-        if attempt:
-            print(
-                f"retry {attempt}/{retries} {engine} {arm} ({prompt_id}) after {last.error}",
-                file=sys.stderr,
-                flush=True,
-            )
-            time.sleep(min(8, 2 ** (attempt - 1)))
-        last = run_invocation(inv, timeout=timeout)
-        if not last.error:
-            return last
-        if not _should_retry(last.error):
-            return last
-    return last
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -265,48 +242,26 @@ def cmd_run(args: argparse.Namespace) -> int:
     if out is None:
         out = default_out_path(cfg, run_id)
 
-    skipped = 0
-    ran = 0
-    for p in prompts:
-        for sample_index in range(1, samples + 1):
-            entry = _find_entry(doc, p["id"], sample_index, samples)
-            created = False
-            if entry is None:
-                created = True
-                entry = {
-                    "prompt_id": p["id"],
-                    "prompt_text": p["text"],
-                    "engines": {},
-                }
-                if p.get("intent"):
-                    entry["intent"] = p["intent"]
-                if p.get("class"):
-                    entry["class"] = p["class"]
-                if p.get("why"):
-                    entry["why"] = p["why"]
-                if samples > 1:
-                    entry["sample_index"] = sample_index
-            for engine in engines:
-                arms_out = dict((entry.get("engines") or {}).get(engine) or {})
-                for arm in arms:
-                    if _cell_done(entry, engine, arm):
-                        skipped += 1
-                        print(f"skip {engine} {arm} ({p['id']}) already stored", file=sys.stderr, flush=True)
-                        continue
-                    inv = build_invocation(engine, arm, p["text"], cfg)
-                    print(f"running {engine} {arm} ({p['id']}) …", file=sys.stderr, flush=True)
-                    result = _run_cell(engine, arm, p["id"], inv, args.timeout, retries)
-                    parsed = parse_engine(engine, result.stdout)
-                    if not parsed.raw_response_text and result.stderr and not result.error:
-                        parsed.raw_response_text = result.stderr.strip()
-                    arms_out[arm] = score_arm(parsed, cfg, error=result.error)
-                    ran += 1
-                if arms_out:
-                    entry.setdefault("engines", {})[engine] = arms_out
-            if created:
-                doc["prompts"].append(entry)
-            write_document(doc, out, overwrite=True)
-            print(f"checkpoint {len(doc['prompts'])}/{len(prompts)} -> {out}", file=sys.stderr, flush=True)
+    concurrency = int(getattr(args, "concurrency", 1) or 1)
+    doc, _recovered = recover_shards(doc, out)
+    skipped, jobs = plan_remaining(doc, prompts, engines, arms, samples)
+    write_document(doc, out, overwrite=True)
+    if concurrency > 1 and jobs:
+        print(
+            f"concurrency {concurrency} ({len(jobs)} remaining cell(s))",
+            file=sys.stderr,
+            flush=True,
+        )
+    doc, ran = run_jobs(
+        cfg=cfg,
+        doc=doc,
+        out=out,
+        jobs=jobs,
+        samples=samples,
+        timeout=args.timeout,
+        retries=retries,
+        concurrency=concurrency,
+    )
 
     print(f"done ran={ran} skipped={skipped} -> {out}", file=sys.stderr, flush=True)
     print(out)

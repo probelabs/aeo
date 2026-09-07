@@ -51,7 +51,7 @@ class ResumeTests(unittest.TestCase):
             import json
             cfg_path.write_text(json.dumps(cfg))
             out.write_text(json.dumps(existing))
-            with patch("aeo.cli.run_invocation", side_effect=fake_run):
+            with patch("aeo.runner.run_invocation", side_effect=fake_run):
                 rc = main(["run", "--config", str(cfg_path), "--engine", "grok", "--arm", "both", "--out", str(out), "--timeout", "5"])
             self.assertEqual(rc, 0)
             doc = json.loads(out.read_text())
