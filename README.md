@@ -68,6 +68,8 @@ A zero-mention grid is not a prompt to write fifty articles.
 
 Portable agent skills live in [`skills/`](skills/): [aeo](skills/aeo/SKILL.md) (run), [aeo-board](skills/aeo-board/SKILL.md) (read), [aeo-playbook](skills/aeo-playbook/SKILL.md) (decide).
 
+After a full grid, `scripts/judge_run.py` labels stance on brand hits **and** extracts product names from every completed arm. Config `competitors` is the seed / known set; names not on that list after normalize are **surprises** (flagged separately). Brand hit rate stays the deterministic `brand_mentioned` regex. See [scripts/README.md](scripts/README.md).
+
 ## Example
 
 [`examples/xerj`](examples/xerj) is a real workspace (84 seeds, watch vs focus), not a hard-coded only-brand. Walkthrough of the fixture: [How to read a run](METHODOLOGY.md#how-to-read-a-run).

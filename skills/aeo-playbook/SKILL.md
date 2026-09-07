@@ -122,4 +122,4 @@ Human view of the same payload: `python3 -m aeo board <file>` (markdown + JSON; 
 
 ## Testimony judge
 
-After a full evidence run, classify each `brand_mentioned` cell with `scripts/judge_run.py` (stance/position/quote), then `scripts/render_judge_html.py`. Do not treat CLI `recommended` as testimony. Grok AEO runs must use `GROK_HOME` without MCP and may need `GROK_SANDBOX=workspace` when Docker Desktop makes `docker.sock` a symlink.
+After a full evidence run, `scripts/judge_run.py` classifies each `brand_mentioned` cell (stance/position/quote) **and** extracts named vendors from every completed arm. Config `competitors` is the seed / known set. A miss that only names UserCheck still shows up as a **surprise** (not on the seed list). The board judge is fed high-frequency surprises as a gap. Then `scripts/render_judge_html.py`. `--vendors-only` skips stance. Do not treat CLI `recommended` as testimony. Grok AEO runs must use `GROK_HOME` without MCP and may need `GROK_SANDBOX=workspace` when Docker Desktop makes `docker.sock` a symlink.

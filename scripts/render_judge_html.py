@@ -2,10 +2,23 @@
 """Tyk AEO HTML: board actions on top, stance-colored K/S grid, quotes in the drawer."""
 from __future__ import annotations
 
-import html, json, os
-from collections import defaultdict
-from datetime import datetime, timezone
+import html, json, os, sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from aeo.vendors import (  # noqa: E402
+    classified_query_vendors_for_arm,
+    classified_vendors_for_arm,
+    load_vendor_store,
+    named_vendor_counts_by_origin,
+    search_box_vendor_counts,
+    seed_alias_map,
+    workspace_from_docs,
+)
 
 ENGINES = ("claude", "codex", "grok")
 ARMS = ("knowledge", "search")
@@ -14,6 +27,25 @@ ARMS = ("knowledge", "search")
 
 def esc(s: str) -> str:
     return html.escape(s or "", quote=True)
+
+
+def format_named_list(items: list) -> str:
+    """Join names; badge surprise records or `(surprise)` suffixes."""
+    bits = []
+    for item in items or []:
+        if isinstance(item, dict):
+            name = str(item.get("name") or item.get("normalized") or item.get("raw") or "")
+            origin = item.get("origin") or ""
+        else:
+            name = str(item)
+            origin = ""
+        if not name:
+            continue
+        if origin == "surprise":
+            bits.append(f"{esc(name)} <span class='badge-surprise'>surprise</span>")
+        else:
+            bits.append(esc(name))
+    return ", ".join(bits)
 
 
 def harness_block(
@@ -27,6 +59,7 @@ def harness_block(
     quote: str = "",
     ahead: list | None = None,
     competitors: list | None = None,
+    query_vendors: list | None = None,
     arm: dict | None = None,
 ) -> str:
     """One drawer card: summary line + collapsible raw answer."""
@@ -45,14 +78,14 @@ def harness_block(
             + "</div>"
         )
     elif kind == "miss":
-        comps_txt = ", ".join(str(c) for c in competitors[:10])
-        named = f" Named instead: {esc(comps_txt)}." if comps_txt else ""
+        comps_txt = format_named_list(competitors[:10])
+        named = f" Named instead: {comps_txt}." if comps_txt else ""
         searched = ""
         if arm_name == "search":
             if arm.get("searched"):
-                vq = arm.get("vendors_in_search_queries") or []
-                vqs = ", ".join(str(x) for x in vq[:8])
-                searched = " Searched." + (f" Vendors in box: {esc(vqs)}." if vqs else "")
+                vq = query_vendors if query_vendors is not None else (arm.get("vendors_in_search_queries") or [])
+                vqs = format_named_list(vq[:8])
+                searched = " Searched." + (f" Vendors in box: {vqs}." if vqs else "")
             else:
                 searched = " Did not search."
         head = (
@@ -87,21 +120,38 @@ def harness_block(
     bits.append("</div>")
     return "".join(bits)
 
-def load(run: Path) -> tuple[dict[str, dict], dict, dict]:
+def _read_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    raw = json.loads(path.read_text())
+    return raw if isinstance(raw, dict) else {}
+
+
+def load(run: Path) -> tuple[dict[str, dict], dict, dict, dict]:
     docs = {}
-    for e in ENGINES:
-        p = run / f"{e}.json"
-        if p.exists():
-            docs[e] = json.loads(p.read_text())
-    judge = {}
-    jp = run / "judge.json"
-    if jp.exists():
-        judge = json.loads(jp.read_text())
-    board = {}
-    bp = run / "board.json"
-    if bp.exists():
-        board = json.loads(bp.read_text())
-    return docs, judge, board
+    if run.is_file():
+        doc = json.loads(run.read_text())
+        found: set[str] = set()
+        for pr in doc.get("prompts") or []:
+            found.update((pr.get("engines") or {}).keys())
+        for e in ENGINES:
+            if e in found or run.stem.lower() == e:
+                docs[e] = doc
+        out_dir = run.parent
+    else:
+        out_dir = run
+        for e in ENGINES:
+            p = run / f"{e}.json"
+            if p.exists():
+                docs[e] = json.loads(p.read_text())
+    judge = _read_json(out_dir / "judge.json")
+    board = _read_json(out_dir / "board.json")
+    vendors = _read_json(out_dir / "vendors_judged.json")
+    if run.is_file():
+        sibling = run.with_name(run.stem + ".vendors_judged.json")
+        if sibling.exists():
+            vendors = _read_json(sibling)
+    return docs, judge, board, vendors
 
 
 def merge_rows(docs: dict[str, dict]) -> list[dict]:
@@ -123,7 +173,7 @@ def merge_rows(docs: dict[str, dict]) -> list[dict]:
     return [by_id[i] for i in order]
 
 
-def cell_view(arm: dict | None, j: dict | None, searched_arm: bool) -> dict:
+def cell_view(arm: dict | None, j: dict | None, searched_arm: bool, named: list | None = None) -> dict:
     if not isinstance(arm, dict) or arm.get("error"):
         return {"kind": "none"}
     mentioned = bool(arm.get("brand_mentioned"))
@@ -136,7 +186,10 @@ def cell_view(arm: dict | None, j: dict | None, searched_arm: bool) -> dict:
         "quote": (j or {}).get("quote") or "",
         "ahead": (j or {}).get("ahead") or [],
         "searched": bool(arm.get("searched")) if searched_arm else None,
-        "competitors": arm.get("competitor_mentions") or [],
+        "competitors": named if named is not None else (arm.get("competitor_mentions") or []),
+        "has_surprise": any(
+            isinstance(x, dict) and x.get("origin") == "surprise" for x in (named or [])
+        ),
     }
 
 
@@ -181,15 +234,20 @@ def rates(docs, judge, rows):
 
 
 def render(run: Path) -> str:
-    docs, judge, board = load(run)
+    docs, judge, board, vendors_raw = load(run)
     rows = merge_rows(docs)
     eng_rates = rates(docs, judge, rows)
-    brand = os.environ.get("AEO_BRAND") or "Tyk"
-    for _e, doc in docs.items():
-        ws = doc.get("workspace") or {}
-        if ws.get("brand"):
-            brand = str(ws["brand"])
-            break
+    ws_brand, aliases, competitors = workspace_from_docs(docs)
+    brand = os.environ.get("AEO_BRAND") or ws_brand or "Tyk"
+    if ws_brand:
+        brand = ws_brand
+    vendor_store = load_vendor_store(vendors_raw)
+    alias_map = seed_alias_map(brand, aliases, competitors, vendor_store.values())
+    known_counts, surprise_counts = named_vendor_counts_by_origin(
+        rows, vendor_store, brand=brand, aliases=aliases, alias_map=alias_map
+    )
+    surprise_mentions = sum(surprise_counts.values())
+    surprise_names = set(surprise_counts)
     n_cells = sum(len((docs.get(e) or {}).get("prompts") or []) * 2 for e in ENGINES)
     # overall search mention / recommend / first among search hits
     sm = sc = rec = fir = wrn = 0
@@ -260,9 +318,12 @@ def render(run: Path) -> str:
         "<article><h3>Searched + vendors in box</h3>"
         "<p><b>Searched</b> = the search arm actually fired a search tool. "
         "<b>Vendors typed into search</b> counts names inside those tool queries "
-        f"(prebelief), including {esc(brand)} when an alias appears.</p>"
+        f"(LLM extract ∪ regex over brand/aliases/config competitors), including {esc(brand)} "
+        "when an alias appears. Board ⚠ / <code>vendors_in_search_queries</code> stay regex-only.</p>"
         "<p class='ex'><b>Example.</b> Tool query “Kong vs Apigee vs Tyk rate limiting” "
-        "counts all three in the search-vendor bars, even if the answer later drops Tyk.</p></article>"
+        "counts all three in the search-vendor bars, even if the answer later drops Tyk. "
+        "A query that only says “UserCheck email verification” still counts UserCheck "
+        "as a <b>surprise</b> after the vendor pass when UserCheck was not on the seed list.</p></article>"
     )
     parts.append("</div></section>")
 
@@ -300,6 +361,11 @@ def render(run: Path) -> str:
         ("Recommend (S)", pct(recommend_s), "of Tyk hits that were actually pushed"),
         ("First pick (S)", pct(first_s), "of Tyk hits that led the list"),
         ("Warn/reject (S)", pct(warn_s), "of Tyk hits with a caveat or no"),
+        (
+            "Surprises",
+            str(surprise_mentions),
+            f"{len(surprise_counts)} vendor{'' if len(surprise_counts) == 1 else 's'} not on the seed list",
+        ),
     ):
         parts.append(f"<article class='metric'><p class='eyebrow'>{lab}</p>")
         parts.append(f"<p class='metric-n'>{val}</p><p class='hint'>{esc(hint)}</p></article>")
@@ -317,65 +383,29 @@ def render(run: Path) -> str:
     parts.append("</section>")
 
 
-    # name fan-out: brand + competitors in answers; brand + vendors in search box
-    from collections import Counter
-    aliases = {brand.lower()}
-    for _e, doc in docs.items():
-        ws = doc.get("workspace") or {}
-        for a in ws.get("aliases") or []:
-            aliases.add(str(a).lower())
-        if ws.get("brand"):
-            aliases.add(str(ws["brand"]).lower())
+    search_vendor_counts = search_box_vendor_counts(
+        rows, vendor_store, brand=brand, aliases=aliases, alias_map=alias_map
+    )
 
-    def is_brand(name: str) -> bool:
-        n = (name or "").lower()
-        return any(a == n or a in n or n in a for a in aliases if a)
-
-    comp_counts = Counter()
-    search_vendor_counts = Counter()
-    for row in rows:
-        for e in ENGINES:
-            arms = row["engines"].get(e) or {}
-            for arm_name in ARMS:
-                arm = arms.get(arm_name)
-                if not isinstance(arm, dict) or arm.get("error"):
-                    continue
-                if arm.get("brand_mentioned"):
-                    comp_counts[brand] += 1
-                for c in arm.get("competitor_mentions") or []:
-                    c = str(c)
-                    if is_brand(c):
-                        continue  # already counted via brand_mentioned
-                    comp_counts[c] += 1
-                if arm_name == "search":
-                    vend = [str(v) for v in (arm.get("vendors_in_search_queries") or [])]
-                    # also scan raw search queries for brand aliases
-                    qs = " ".join(str(q) for q in (arm.get("search_queries") or [])).lower()
-                    brand_in_box = any(a in qs for a in aliases if len(a) >= 3) or any(is_brand(v) for v in vend)
-                    if brand_in_box:
-                        search_vendor_counts[brand] += 1
-                    for v in vend:
-                        if is_brand(v):
-                            continue
-                        search_vendor_counts[v] += 1
-
-    def vendor_rows(counts: Counter, *, brand_name: str) -> str:
+    def vendor_rows(counts, *, brand_name: str, surprise: bool = False, surprise_set: set | None = None) -> str:
         if not counts:
             return "<p class='hint'>Nothing recorded.</p>"
         top = counts.most_common(20)
-        # always surface brand even if outside top-20
         if brand_name in counts and brand_name not in {n for n, _ in top}:
             top = [(brand_name, counts[brand_name])] + top[:19]
-        # put brand first when present
         top = sorted(top, key=lambda x: (0 if x[0] == brand_name else 1, -x[1], x[0].lower()))
         mx = max(n for _, n in top) or 1
         bits = []
         for name, n in top:
             width = (n / mx) * 100
-            cls = "vname brand" if name == brand_name else "vname"
-            fill = "brand" if name == brand_name else "teal"
+            is_surp = surprise or (surprise_set is not None and name in surprise_set and name != brand_name)
+            cls = "vname brand" if name == brand_name else ("vname surprise" if is_surp else "vname")
+            fill = "brand" if name == brand_name else ("surprise" if is_surp else "teal")
+            label = esc(name)
+            if is_surp:
+                label += " <span class='badge-surprise'>surprise</span>"
             bits.append(
-                f"<div class='vrow'><span class='{cls}'>{esc(name)}</span>"
+                f"<div class='vrow'><span class='{cls}'>{label}</span>"
                 f"<div class='bar'><span class='bar-fill {fill}' style='width:{width:.1f}%'></span></div>"
                 f"<span class='vcount'>{n}</span></div>"
             )
@@ -383,21 +413,39 @@ def render(run: Path) -> str:
 
     parts.append("<h2>Who got named</h2>")
     parts.append(
-        f"<p class='hint'>{esc(brand)} (from brand_mentioned) plus competitor names in answer text. "
-        "All engines, both arms. Not the same as search-box prebelief.</p>"
+        f"<p class='hint'>{esc(brand)} (from deterministic <code>brand_mentioned</code>) plus "
+        "<b>known</b> competitors: config seed list, union regex + LLM extract after normalize. "
+        "All engines, both arms. Surprises are not in this pile.</p>"
     )
     parts.append("<div class='vendor-bars'>")
-    parts.append(vendor_rows(comp_counts, brand_name=brand))
+    parts.append(vendor_rows(known_counts, brand_name=brand))
+    parts.append("</div>")
+
+    parts.append("<h2>Surprise competitors</h2>")
+    parts.append(
+        f"<p class='hint'>Vendors named in answers whose normalized form is <b>not</b> on the "
+        f"config seed list. {surprise_mentions} mention{'' if surprise_mentions == 1 else 's'} "
+        f"across {len(surprise_counts)} name{'' if len(surprise_counts) == 1 else 's'}. "
+        "Discovery worth reviewing — consider adding repeats to the next run's seed list.</p>"
+    )
+    parts.append("<div class='vendor-bars'>")
+    if surprise_counts:
+        parts.append(vendor_rows(surprise_counts, brand_name=brand, surprise=True))
+    else:
+        parts.append("<p class='hint'>No surprises. Every named vendor was on the seed list (or the brand).</p>")
     parts.append("</div>")
 
     parts.append("<h2>Vendors typed into search</h2>")
     parts.append(
-        f"<p class='hint'>Names inside search tool queries (search arm only), including {esc(brand)} "
-        "when an alias appeared in the query box.</p>"
+        f"<p class='hint'>Names inside search tool queries (search arm only): LLM extract of the "
+        f"query strings, union regex over brand/aliases/config competitors, including {esc(brand)} "
+        "when an alias appeared in the query box. Surprise names (not on the seed list) are flagged. "
+        "Evidence <code>vendors_in_search_queries</code> and board ⚠ stay regex-only.</p>"
     )
     parts.append("<div class='vendor-bars'>")
     if search_vendor_counts:
-        parts.append(vendor_rows(search_vendor_counts, brand_name=brand))
+        search_surprise = {n for n in search_vendor_counts if n != brand and not alias_map.is_seed(n)}
+        parts.append(vendor_rows(search_vendor_counts, brand_name=brand, surprise_set=search_surprise | surprise_names))
     else:
         parts.append("<p class='hint'>Nobody typed vendor names into search (or no engine searched).</p>")
     parts.append("</div>")
@@ -405,7 +453,7 @@ def render(run: Path) -> str:
     parts.append("<h2>Queries</h2>")
 
     parts.append("<div class='chips' id='chips'>")
-    for key, lab in (("recommend","recommend"), ("first","first pick"), ("last","last/aside"), ("warn","warn"), ("reject","reject"), ("miss","miss")):
+    for key, lab in (("recommend","recommend"), ("first","first pick"), ("last","last/aside"), ("warn","warn"), ("reject","reject"), ("miss","miss"), ("surprise","surprise")):
         parts.append(f"<button type='button' class='chip' data-f='{key}'>{lab}</button>")
     parts.append("</div>")
     parts.append("<div class='table-legend'><span class='leg-item'><b>K</b> knowledge</span> · <span class='leg-item'><b>S</b> search</span>")
@@ -426,7 +474,22 @@ def render(run: Path) -> str:
             for arm_name, letter in (("knowledge", "K"), ("search", "S")):
                 arm = arms.get(arm_name)
                 j = judge.get(f"{row['prompt_id']}|{e}|{arm_name}")
-                v = cell_view(arm, j, arm_name == "search")
+                vkey = f"{row['prompt_id']}|{e}|{arm_name}"
+                named = classified_vendors_for_arm(
+                    arm if isinstance(arm, dict) else None,
+                    vendor_store.get(vkey),
+                    alias_map,
+                    brand,
+                    aliases,
+                )
+                qnamed = classified_query_vendors_for_arm(
+                    arm if isinstance(arm, dict) else None,
+                    vendor_store.get(vkey),
+                    alias_map,
+                    brand,
+                    aliases,
+                )
+                v = cell_view(arm, j, arm_name == "search", named)
                 st = v.get("stance") or ""
                 kind = v.get("kind")
                 cls = "miss" if kind == "miss" else {"recommend":"rec","mention":"men","warn":"wrn","reject":"rej"}.get(st, "men")
@@ -440,6 +503,10 @@ def render(run: Path) -> str:
                         tags.add("last")
                 else:
                     tags.add("miss")
+                if v.get("has_surprise") or any(
+                    isinstance(x, dict) and x.get("origin") == "surprise" for x in qnamed
+                ):
+                    tags.add("surprise")
                 tip = f"{letter} {st or kind} {v.get('position') or ''}".strip()
                 marks.append(f"<span class='mk {cls}' title='{esc(tip)}'>{letter}</span>")
                 drawer.append(
@@ -453,6 +520,7 @@ def render(run: Path) -> str:
                         quote=v.get("quote") or "",
                         ahead=v.get("ahead") or [],
                         competitors=v.get("competitors") or [],
+                        query_vendors=qnamed,
                         arm=arm if isinstance(arm, dict) else None,
                     )
                 )
@@ -537,6 +605,11 @@ display:flex;align-items:center;justify-content:center;font-weight:650;font-size
 .method-grid code{font-size:12px;color:var(--teal)}
 .bar-fill.brand{background:linear-gradient(90deg,#b8860b,var(--men))}
 .vname.brand{color:var(--men);font-weight:650}
+.bar-fill.surprise{background:linear-gradient(90deg,#c45c26,var(--wrn))}
+.vname.surprise{color:var(--wrn);font-weight:650}
+.badge-surprise{display:inline-block;margin-left:6px;padding:0 6px;border-radius:999px;
+font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:650;
+background:rgba(240,163,107,.18);color:var(--wrn);vertical-align:middle}
 
 .harness{margin:10px 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line)}
 .harness:last-child{border-bottom:0}
@@ -579,9 +652,30 @@ document.querySelectorAll('.chip').forEach((c)=>{
 """
 
 
-def main():
-    run = Path(os.environ.get("AEO_TYK_RUN") or str(Path.home() / ".aeo/runs/tyk100-20260901"))
-    html_out = run / "tyk100-20260901-report.html"
+def main(argv: list[str] | None = None):
+    args = list(sys.argv[1:] if argv is None else argv)
+    run = None
+    for a in args:
+        if a in ("-h", "--help"):
+            print(
+                "Usage: render_judge_html.py [run_dir_or_evidence.json]\n"
+                "Env: AEO_BRAND, AEO_RUN or AEO_TYK_RUN"
+            )
+            return
+        if not a.startswith("-"):
+            run = Path(a)
+            break
+    if run is None:
+        run = Path(
+            os.environ.get("AEO_RUN")
+            or os.environ.get("AEO_TYK_RUN")
+            or str(Path.home() / ".aeo/runs/tyk100-20260901")
+        )
+    out_dir = run if run.is_dir() else run.parent
+    html_out = out_dir / f"{(run if run.is_dir() else run).name}-report.html"
+    # Keep the historical Tyk default filename when using that run dir.
+    if run.is_dir() and run.name == "tyk100-20260901":
+        html_out = run / "tyk100-20260901-report.html"
     html_out.write_text(render(run))
     print("wrote", html_out)
 

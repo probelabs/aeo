@@ -14,6 +14,14 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(schema.get("$schema"), "https://json-schema.org/draft/2020-12/schema")
         self.assertEqual(schema["title"], "aeo-cli-evidence-v1")
 
+    def test_judge_schema_has_vendors_cell(self):
+        p = ROOT / "schemas" / "aeo-judge-v1.json"
+        schema = json.loads(p.read_text(encoding="utf-8"))
+        self.assertIn("vendors_cell", schema)
+        self.assertIn("vendors", schema["vendors_cell"])
+        self.assertIn("query_vendors", schema["vendors_cell"])
+        self.assertIn("origin", schema["vendors_cell"]["vendors"][0])
+
     def test_config_schema_file_present(self):
         p = ROOT / "schemas" / "aeo-cli-config-v1.json"
         schema = json.loads(p.read_text(encoding="utf-8"))
