@@ -42,6 +42,12 @@ TRANSITION_LABELS = {
     "still_miss": "still miss",
 }
 
+# Competitor dynamics. A name is absent / OUT when mentions < floor (default 1 = count==0).
+# `--floor 2` treats a single leftover mention as near-zero, not still ranking.
+DEFAULT_FLOOR = 1
+DEFAULT_TOP_N = 15
+DEFAULT_TOP_MOVERS = 10
+
 
 def _esc(s: Any) -> str:
     return html.escape(str(s if s is not None else ""), quote=True)
@@ -462,19 +468,95 @@ def prompt_transitions(
     }
 
 
+def engines_with_cells(snapshot: RunSnapshot) -> list[str]:
+    """Engines that have at least one completed (non-error) cell."""
+    found: list[str] = []
+    for engine in _engine_order(snapshot.docs):
+        for row in snapshot.rows:
+            for arm_name in ARMS:
+                if _cell_state(_arm_of(row, engine, arm_name)) == "ok":
+                    found.append(engine)
+                    break
+            else:
+                continue
+            break
+    return found
+
+
+def engine_coverage(baseline: RunSnapshot, current: RunSnapshot) -> dict[str, Any]:
+    """Comparable engines = intersection. A skipped engine is not a market drop."""
+    b = engines_with_cells(baseline)
+    c = engines_with_cells(current)
+    bs, cs = set(b), set(c)
+    comparable = [e for e in _engine_order(baseline.docs, current.docs) if e in bs and e in cs]
+    return {
+        "baseline": b,
+        "current": c,
+        "comparable": comparable,
+        "missing_in_current": [e for e in b if e not in cs],
+        "missing_in_baseline": [e for e in c if e not in bs],
+    }
+
+
+def brand_cell_counts(snapshot: RunSnapshot, engines: list[str]) -> dict[str, Any]:
+    """Deterministic brand_mentioned cells (K+S) on the given engines."""
+    out: dict[str, Any] = {
+        "cells": 0,
+        "n": 0,
+        "knowledge": {"hits": 0, "n": 0, "rate": None},
+        "search": {"hits": 0, "n": 0, "rate": None},
+        "engines": {},
+    }
+    for engine in engines:
+        rec: dict[str, Any] = {
+            "cells": 0,
+            "n": 0,
+            "knowledge": {"hits": 0, "n": 0, "rate": None},
+            "search": {"hits": 0, "n": 0, "rate": None},
+        }
+        for row in snapshot.rows:
+            for arm_name in ARMS:
+                arm = _arm_of(row, engine, arm_name)
+                if _cell_state(arm) != "ok":
+                    continue
+                rec["n"] += 1
+                rec[arm_name]["n"] += 1
+                if _is_hit(arm):
+                    rec["cells"] += 1
+                    rec[arm_name]["hits"] += 1
+        for arm_name in ARMS:
+            rec[arm_name]["rate"] = _rate(rec[arm_name]["hits"], rec[arm_name]["n"])
+        out["engines"][engine] = rec
+        out["cells"] += rec["cells"]
+        out["n"] += rec["n"]
+        for arm_name in ARMS:
+            out[arm_name]["hits"] += rec[arm_name]["hits"]
+            out[arm_name]["n"] += rec[arm_name]["n"]
+    for arm_name in ARMS:
+        out[arm_name]["rate"] = _rate(out[arm_name]["hits"], out[arm_name]["n"])
+    return out
+
+
 def vendor_counts(
     snapshot: RunSnapshot,
     *,
     brand: str,
     aliases: list[str],
-    competitors: list[str],  # noqa: ARG001 — kept for call-site symmetry
     alias_map: Any,
+    engines: list[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Normalized vendor → {name, origin, answer, search_box}. Brand excluded."""
+    """Normalized vendor → {name, origin, answer, search_box, by_engine}. Brand excluded."""
     store = snapshot.vendors
+    allow = set(engines) if engines is not None else None
     by_key: dict[str, dict[str, Any]] = {}
 
-    def bump(rec: dict[str, str], *, answer: bool = False, search_box: bool = False) -> None:
+    def bump(
+        rec: dict[str, str],
+        engine: str,
+        *,
+        answer: bool = False,
+        search_box: bool = False,
+    ) -> None:
         name = rec.get("name") or ""
         origin = rec.get("origin") or "known"
         key = alias_map.key_for(name)
@@ -482,19 +564,31 @@ def vendor_counts(
             return
         slot = by_key.setdefault(
             key,
-            {"key": key, "name": name, "origin": origin, "answer": 0, "search_box": 0},
+            {
+                "key": key,
+                "name": name,
+                "origin": origin,
+                "answer": 0,
+                "search_box": 0,
+                "by_engine": {},
+            },
         )
         slot["name"] = alias_map.display_for(name) or slot["name"]
         if origin == "surprise":
             slot["origin"] = "surprise"
+        eng = slot["by_engine"].setdefault(engine, {"answer": 0, "search_box": 0})
         if answer:
             slot["answer"] += 1
+            eng["answer"] += 1
         if search_box:
             slot["search_box"] += 1
+            eng["search_box"] += 1
 
     for row in snapshot.rows:
         pid = row.get("prompt_id")
         for engine, arms in (row.get("engines") or {}).items():
+            if allow is not None and engine not in allow:
+                continue
             if not isinstance(arms, dict):
                 continue
             for arm_name in ARMS:
@@ -504,12 +598,12 @@ def vendor_counts(
                 vkey = f"{pid}|{engine}|{arm_name}"
                 cell = store.get(vkey)
                 for rec in classified_vendors_for_arm(arm, cell, alias_map, brand, aliases):
-                    bump(rec, answer=True)
+                    bump(rec, engine, answer=True)
                 if arm_name == "search":
                     for rec in classified_query_vendors_for_arm(
                         arm, cell, alias_map, brand, aliases
                     ):
-                        bump(rec, search_box=True)
+                        bump(rec, engine, search_box=True)
     return by_key
 
 
@@ -519,11 +613,68 @@ def _mentions(rec: dict[str, Any] | None) -> int:
     return int(rec.get("answer") or 0) + int(rec.get("search_box") or 0)
 
 
+def _engine_mentions(rec: dict[str, Any] | None, engine: str) -> int:
+    if not rec:
+        return 0
+    slot = (rec.get("by_engine") or {}).get(engine) or {}
+    return int(slot.get("answer") or 0) + int(slot.get("search_box") or 0)
+
+
+def _share(n: int, total: int) -> float | None:
+    if total <= 0:
+        return None
+    return n / total
+
+
+def _rank_map(counts: dict[str, int], *, floor: int) -> dict[str, int]:
+    """1-based rank among names with mentions >= floor. Tie-break: name."""
+    ranked = sorted(
+        ((k, n) for k, n in counts.items() if n >= floor),
+        key=lambda kn: (-kn[1], kn[0]),
+    )
+    return {k: i + 1 for i, (k, _n) in enumerate(ranked)}
+
+
+def _rank_label(baseline_rank: int | None, current_rank: int | None) -> str:
+    if baseline_rank is None and current_rank is not None:
+        return "NEW"
+    if baseline_rank is not None and current_rank is None:
+        return "OUT"
+    if baseline_rank is None or current_rank is None:
+        return "—"
+    if baseline_rank == current_rank:
+        return "—"
+    delta = baseline_rank - current_rank
+    if delta > 0:
+        return f"↑{delta}"
+    return f"↓{abs(delta)}"
+
+
+def _status_for(b_n: int, c_n: int, floor: int) -> str:
+    b_on = b_n >= floor
+    c_on = c_n >= floor
+    if not b_on and c_on:
+        return "new"
+    if b_on and not c_on:
+        return "disappeared"
+    if b_on and c_on and c_n > b_n:
+        return "riser"
+    if b_on and c_on and c_n < b_n:
+        return "faller"
+    if b_on and c_on:
+        return "flat"
+    return "noise"
+
+
 def diff_vendors(
     baseline: RunSnapshot,
     current: RunSnapshot,
     *,
     brand: str,
+    engines: list[str] | None = None,
+    floor: int = DEFAULT_FLOOR,
+    top_n: int = DEFAULT_TOP_N,
+    top_movers: int = DEFAULT_TOP_MOVERS,
 ) -> dict[str, Any]:
     aliases = list(dict.fromkeys([*baseline.aliases, *current.aliases]))
     competitors = list(dict.fromkeys([*baseline.competitors, *current.competitors]))
@@ -533,13 +684,12 @@ def diff_vendors(
         competitors,
         list(baseline.vendors.values()) + list(current.vendors.values()),
     )
-    b = vendor_counts(
-        baseline, brand=brand, aliases=aliases, competitors=competitors, alias_map=alias_map
-    )
-    c = vendor_counts(
-        current, brand=brand, aliases=aliases, competitors=competitors, alias_map=alias_map
-    )
+    use_engines = list(engines or _engine_order(baseline.docs, current.docs))
+    b = vendor_counts(baseline, brand=brand, aliases=aliases, alias_map=alias_map, engines=use_engines)
+    c = vendor_counts(current, brand=brand, aliases=aliases, alias_map=alias_map, engines=use_engines)
     keys = set(b) | set(c)
+    field_b = sum(_mentions(b.get(k)) for k in keys)
+    field_c = sum(_mentions(c.get(k)) for k in keys)
     rows: list[dict[str, Any]] = []
     for key in keys:
         br = b.get(key)
@@ -556,52 +706,209 @@ def diff_vendors(
             origin = "surprise"
         if cr:
             origin = cr.get("origin") or origin
-        if br and not cr:
+        elif br:
             origin = br.get("origin") or origin
-        if b_n == 0 and c_n > 0:
-            status = "new"
-        elif b_n > 0 and c_n == 0:
-            status = "disappeared"
-        elif c_n > b_n:
-            status = "riser"
-        elif c_n < b_n:
-            status = "faller"
-        else:
-            status = "flat"
+        engines_seen = sorted(
+            {
+                e
+                for rec in (br, cr)
+                if rec
+                for e, slot in (rec.get("by_engine") or {}).items()
+                if (int(slot.get("answer") or 0) + int(slot.get("search_box") or 0)) > 0
+            }
+        )
+        by_engine = {
+            e: {
+                "baseline": _engine_mentions(br, e),
+                "current": _engine_mentions(cr, e),
+                "delta": _engine_mentions(cr, e) - _engine_mentions(br, e),
+            }
+            for e in use_engines
+        }
         rows.append(
             {
                 "key": key,
                 "name": name,
                 "origin": origin,
                 "surprise": origin == "surprise",
-                "status": status,
-                "baseline": {"answer": b_ans, "search_box": b_q, "mentions": b_n},
-                "current": {"answer": c_ans, "search_box": c_q, "mentions": c_n},
+                "is_brand": False,
+                "status": _status_for(b_n, c_n, floor),
+                "baseline": {
+                    "answer": b_ans,
+                    "search_box": b_q,
+                    "mentions": b_n,
+                    "share": _share(b_n, field_b),
+                },
+                "current": {
+                    "answer": c_ans,
+                    "search_box": c_q,
+                    "mentions": c_n,
+                    "share": _share(c_n, field_c),
+                },
                 "delta": c_n - b_n,
                 "delta_answer": c_ans - b_ans,
                 "delta_search_box": c_q - b_q,
+                "share_delta_pp": _delta_pp(_share(b_n, field_b), _share(c_n, field_c)),
+                "engines": engines_seen,
+                "by_engine": by_engine,
             }
         )
 
+    brand_b = brand_cell_counts(baseline, use_engines)
+    brand_c = brand_cell_counts(current, use_engines)
+    b_brand_n = int(brand_b["cells"])
+    c_brand_n = int(brand_c["cells"])
+    named_b = field_b + b_brand_n
+    named_c = field_c + c_brand_n
+    brand_row = {
+        "key": "__brand__",
+        "name": brand,
+        "origin": "brand",
+        "surprise": False,
+        "is_brand": True,
+        "status": _status_for(b_brand_n, c_brand_n, floor),
+        "baseline": {
+            "answer": b_brand_n,
+            "search_box": 0,
+            "mentions": b_brand_n,
+            "share": _share(b_brand_n, named_b),
+        },
+        "current": {
+            "answer": c_brand_n,
+            "search_box": 0,
+            "mentions": c_brand_n,
+            "share": _share(c_brand_n, named_c),
+        },
+        "delta": c_brand_n - b_brand_n,
+        "delta_answer": c_brand_n - b_brand_n,
+        "delta_search_box": 0,
+        "share_delta_pp": _delta_pp(_share(b_brand_n, named_b), _share(c_brand_n, named_c)),
+        "engines": use_engines,
+        "by_engine": {
+            e: {
+                "baseline": int((brand_b["engines"].get(e) or {}).get("cells") or 0),
+                "current": int((brand_c["engines"].get(e) or {}).get("cells") or 0),
+                "delta": int((brand_c["engines"].get(e) or {}).get("cells") or 0)
+                - int((brand_b["engines"].get(e) or {}).get("cells") or 0),
+            }
+            for e in use_engines
+        },
+    }
+
+    rank_b = _rank_map(
+        {r["key"]: r["baseline"]["mentions"] for r in rows} | {brand_row["key"]: b_brand_n},
+        floor=floor,
+    )
+    rank_c = _rank_map(
+        {r["key"]: r["current"]["mentions"] for r in rows} | {brand_row["key"]: c_brand_n},
+        floor=floor,
+    )
+    for r in (*rows, brand_row):
+        r["baseline_rank"] = rank_b.get(r["key"])
+        r["current_rank"] = rank_c.get(r["key"])
+        r["rank_delta"] = (
+            (r["baseline_rank"] - r["current_rank"])
+            if r["baseline_rank"] is not None and r["current_rank"] is not None
+            else None
+        )
+        r["rank_label"] = _rank_label(r["baseline_rank"], r["current_rank"])
+
     rows.sort(key=lambda r: (-abs(r["delta"]), -r["current"]["mentions"], r["name"].lower()))
-    risers = [r for r in rows if r["status"] == "riser"]
-    fallers = [r for r in rows if r["status"] == "faller"]
-    new = [r for r in rows if r["status"] == "new"]
-    disappeared = [r for r in rows if r["status"] == "disappeared"]
-    risers.sort(key=lambda r: (-r["delta"], -r["current"]["mentions"], r["name"].lower()))
-    fallers.sort(key=lambda r: (r["delta"], -r["baseline"]["mentions"], r["name"].lower()))
-    new.sort(key=lambda r: (-r["current"]["mentions"], r["name"].lower()))
-    disappeared.sort(key=lambda r: (-r["baseline"]["mentions"], r["name"].lower()))
-    surprises = [r for r in rows if r["surprise"]]
-    surprises.sort(key=lambda r: (-r["current"]["mentions"], r["name"].lower()))
+    scored = [r for r in rows if r["status"] != "noise"]
+    risers = sorted(
+        [r for r in scored if r["status"] == "riser"],
+        key=lambda r: (-r["delta"], -r["current"]["mentions"], r["name"].lower()),
+    )
+    fallers = sorted(
+        [r for r in scored if r["status"] == "faller"],
+        key=lambda r: (r["delta"], -r["baseline"]["mentions"], r["name"].lower()),
+    )
+    new = sorted(
+        [r for r in scored if r["status"] == "new"],
+        key=lambda r: (-r["current"]["mentions"], r["name"].lower()),
+    )
+    disappeared = sorted(
+        [r for r in scored if r["status"] == "disappeared"],
+        key=lambda r: (-r["baseline"]["mentions"], r["name"].lower()),
+    )
+    new_known = [r for r in new if not r["surprise"]]
+    new_surprise = [r for r in new if r["surprise"]]
+    surprises = sorted(
+        [r for r in scored if r["surprise"]],
+        key=lambda r: (-r["current"]["mentions"], r["name"].lower()),
+    )
+
+    def _in_top(r: dict[str, Any]) -> bool:
+        brk = r.get("baseline_rank")
+        crk = r.get("current_rank")
+        return (brk is not None and brk <= top_n) or (crk is not None and crk <= top_n)
+
+    rank_rows = [brand_row, *rows]
+    rank = [r for r in rank_rows if _in_top(r)]
+    rank.sort(
+        key=lambda r: (
+            r.get("current_rank") is None,
+            r.get("current_rank") or 999,
+            r.get("baseline_rank") or 999,
+            r["name"].lower(),
+        )
+    )
+
+    def _leader(side: str) -> dict[str, Any] | None:
+        pool = [r for r in rows if (r.get(side) or {}).get("mentions", 0) >= floor]
+        if not pool:
+            return None
+        best = max(pool, key=lambda r: (r[side]["mentions"], -ord(r["name"][:1].lower() or "z")))
+        return {"name": best["name"], "mentions": best[side]["mentions"], "origin": best["origin"]}
+
+    brand_vs_field = {
+        "compared_engines": use_engines,
+        "floor": floor,
+        "brand": {
+            "name": brand,
+            "baseline_mentions": b_brand_n,
+            "current_mentions": c_brand_n,
+            "delta": c_brand_n - b_brand_n,
+            "baseline_cells": brand_b["n"],
+            "current_cells": brand_c["n"],
+            "knowledge": _rate_pair(brand_b["knowledge"], brand_c["knowledge"]),
+            "search": _rate_pair(brand_b["search"], brand_c["search"]),
+            "share": {
+                "baseline": _share(b_brand_n, named_b),
+                "current": _share(c_brand_n, named_c),
+                "delta_pp": _delta_pp(_share(b_brand_n, named_b), _share(c_brand_n, named_c)),
+            },
+        },
+        "field": {
+            "baseline_mentions": field_b,
+            "current_mentions": field_c,
+            "delta": field_c - field_b,
+            "baseline_names": sum(1 for r in rows if r["baseline"]["mentions"] >= floor),
+            "current_names": sum(1 for r in rows if r["current"]["mentions"] >= floor),
+        },
+        "leader": {"baseline": _leader("baseline"), "current": _leader("current")},
+    }
+
     return {
         "source": {"baseline": baseline.vendor_source, "current": current.vendor_source},
-        "risers": risers,
-        "fallers": fallers,
+        "floor": floor,
+        "floor_note": (
+            f"A name is NEW when baseline mentions < {floor} and current ≥ {floor}; "
+            f"OUT / disappeared when current < {floor} and baseline ≥ {floor}. "
+            f"Default floor is 1 (count == 0). Raise --floor to treat leftover singles as gone."
+        ),
+        "top_n": top_n,
+        "compared_engines": use_engines,
+        "brand_vs_field": brand_vs_field,
+        "rank": rank,
+        "risers": risers[:top_movers],
+        "fallers": fallers[:top_movers],
         "new": new,
+        "new_known": new_known,
+        "new_surprise": new_surprise,
         "disappeared": disappeared,
         "surprises": surprises,
-        "all": rows,
+        "all": scored,
     }
 
 
@@ -643,8 +950,10 @@ def _new_surprise(vendors: dict[str, Any]) -> dict[str, Any] | None:
 def _headline(
     brand: str,
     rates: dict[str, Any],
+    vendors: dict[str, Any],
     mover: dict[str, Any] | None,
     surprise: dict[str, Any] | None,
+    coverage: dict[str, Any],
 ) -> str:
     search = (rates.get("overall") or {}).get("search") or {}
     delta = search.get("delta_pp")
@@ -663,24 +972,47 @@ def _headline(
         bits.append(
             f"{brand} search mention fell {abs(delta):.1f}pp ({_pct_label(before)} → {_pct_label(after)})."
         )
+    bvf = vendors.get("brand_vs_field") or {}
+    brand_blk = bvf.get("brand") or {}
+    field_blk = bvf.get("field") or {}
+    if brand_blk and field_blk:
+        bits.append(
+            f"{brand} {brand_blk.get('baseline_mentions')}→{brand_blk.get('current_mentions')} "
+            f"named cells; field {field_blk.get('baseline_mentions')}→{field_blk.get('current_mentions')}."
+        )
     if mover:
         verb = {
             "riser": "rose",
             "new": "appeared",
             "faller": "fell",
-            "disappeared": "disappeared",
+            "disappeared": "left the ranking",
         }.get(mover["status"], "moved")
         if mover["status"] == "new":
             bits.append(f"{mover['name']} appeared with {mover['current']} mentions.")
         elif mover["status"] == "disappeared":
-            bits.append(f"{mover['name']} disappeared ({mover['baseline']} → 0).")
+            bits.append(f"{mover['name']} left the ranking ({mover['baseline']} → {mover['current']}).")
         else:
             n = abs(int(mover["delta"]))
             unit = "mention" if n == 1 else "mentions"
             bits.append(f"{mover['name']} {verb} {n} {unit}.")
+    new_n = len(vendors.get("new") or [])
+    out_n = len(vendors.get("disappeared") or [])
+    if new_n or out_n:
+        extra = []
+        if new_n:
+            extra.append(f"{new_n} new")
+        if out_n:
+            extra.append(f"{out_n} OUT")
+        bits.append("Competitors: " + ", ".join(extra) + ".")
     if surprise:
         bits.append(f"New surprise: {surprise['name']} ({surprise['current']}).")
-    elif not mover:
+    skipped = coverage.get("missing_in_current") or []
+    if skipped:
+        bits.append(
+            f"Note: {', '.join(skipped)} in baseline only — ranks use "
+            f"{', '.join(coverage.get('comparable') or []) or 'the overlapping engines'}."
+        )
+    elif not mover and not new_n and not out_n:
         bits.append("No competitor movement.")
     return " ".join(bits)
 
@@ -690,17 +1022,34 @@ def diff_runs(
     current: RunSnapshot,
     *,
     brand: str,
+    floor: int = DEFAULT_FLOOR,
+    top_n: int = DEFAULT_TOP_N,
+    top_movers: int = DEFAULT_TOP_MOVERS,
 ) -> dict[str, Any]:
     brand = (brand or current.brand or baseline.brand or "").strip()
     if not brand:
         raise ValueError("brand is required (--brand or workspace.brand)")
+    if floor < 1:
+        raise ValueError("floor must be >= 1")
     engines = _engine_order(baseline.docs, current.docs)
+    coverage = engine_coverage(baseline, current)
+    comparable = coverage["comparable"] or engines
     rates = diff_brand_rates(baseline, current, engines)
     transitions = prompt_transitions(baseline, current, engines)
-    vendors = diff_vendors(baseline, current, brand=brand)
+    vendors = diff_vendors(
+        baseline,
+        current,
+        brand=brand,
+        engines=comparable,
+        floor=floor,
+        top_n=top_n,
+        top_movers=top_movers,
+    )
+    vendors["engine_coverage"] = coverage
     mover = _biggest_mover(vendors)
     surprise = _new_surprise(vendors)
-    headline = _headline(brand, rates, mover, surprise)
+    headline = _headline(brand, rates, vendors, mover, surprise, coverage)
+    bvf = vendors.get("brand_vs_field") or {}
     return {
         "schema_version": SCHEMA_VERSION,
         "brand": brand,
@@ -719,6 +1068,7 @@ def diff_runs(
             "vendor_source": current.vendor_source,
         },
         "engines": engines,
+        "engine_coverage": coverage,
         "summary": {
             "headline": headline,
             "brand_delta_pp": {
@@ -726,7 +1076,14 @@ def diff_runs(
                 "search": (rates["overall"]["search"] or {}).get("delta_pp"),
                 "search_rate": (rates["overall"]["search_rate"] or {}).get("delta_pp"),
             },
+            "brand_vs_field": {
+                "brand_delta": (bvf.get("brand") or {}).get("delta"),
+                "field_delta": (bvf.get("field") or {}).get("delta"),
+                "share_delta_pp": ((bvf.get("brand") or {}).get("share") or {}).get("delta_pp"),
+            },
             "biggest_competitor_mover": mover,
+            "new_count": len(vendors.get("new") or []),
+            "disappeared_count": len(vendors.get("disappeared") or []),
             "new_surprise": surprise,
         },
         "brand_rates": rates,
@@ -739,6 +1096,10 @@ def diff_runs(
             "incomplete_cells": transitions["incomplete_cells"],
             "incomplete_cell_count": len(transitions["incomplete_cells"]),
             "vendor_source": vendors["source"],
+            "floor": floor,
+            "floor_note": vendors.get("floor_note"),
+            "compared_engines": comparable,
+            "engine_coverage": coverage,
             "notes": [
                 "Same roster is assumed; unmatched prompt_ids are listed, not scored in transitions.",
                 "Mention rates skip error / missing cells. Those cells are listed as incomplete.",
@@ -746,6 +1107,8 @@ def diff_runs(
                 "Vendor counts prefer vendors_judged.json (LLM ∪ regex) per cell; otherwise regex competitor_mentions / vendors_in_search_queries.",
                 "A side without vendors_judged cannot surface surprises that were never on the seed list.",
                 "Names are merged with aeo.vendors normalize (Kong Gateway ≡ Kong when Kong is seeded).",
+                vendors.get("floor_note") or "",
+                "Competitor ranks use engines present on both sides. A skipped engine (e.g. Grok in baseline only) is labelled — do not read that as a market drop.",
             ],
         },
     }
@@ -778,28 +1141,104 @@ def _rate_cell(pair: dict[str, Any], *, invert: bool = False) -> str:
     )
 
 
+def _share_label(share: float | None) -> str:
+    if share is None:
+        return "—"
+    return f"{share * 100:.1f}%"
+
+
+def _origin_badge(r: dict[str, Any]) -> str:
+    bits = ""
+    if r.get("is_brand"):
+        bits += " <span class='badge-brand'>brand</span>"
+    if r.get("surprise"):
+        bits += " <span class='badge-surprise'>surprise</span>"
+    return bits
+
+
+def _engines_attr(r: dict[str, Any]) -> str:
+    return " ".join(r.get("engines") or [])
+
+
 def _vendor_table(rows: list[dict[str, Any]], empty: str) -> str:
     if not rows:
         return f"<p class='hint'>{_esc(empty)}</p>"
     bits = [
-        "<div class='table-wrap'><table class='data'><thead><tr>",
+        "<div class='table-wrap'><table class='data sortable'><thead><tr>",
         "<th>Name</th><th>Origin</th><th class='num'>Baseline</th><th class='num'>Current</th>",
-        "<th class='num'>Δ</th><th class='num'>Answer Δ</th><th class='num'>Search-box Δ</th>",
+        "<th class='num'>Δ</th><th class='num'>Share Δ</th><th class='num'>Answer Δ</th>",
         "</tr></thead><tbody>",
     ]
     for r in rows:
-        badge = (
-            " <span class='badge-surprise'>surprise</span>" if r.get("surprise") else ""
-        )
-        cls = _delta_class(r.get("delta"), invert=True)
-        bits.append("<tr>")
-        bits.append(f"<td>{_esc(r.get('name'))}{badge}</td>")
+        cls = _delta_class(r.get("delta"), invert=not r.get("is_brand"))
+        bits.append(f"<tr data-engines='{_esc(_engines_attr(r))}'>")
+        bits.append(f"<td>{_esc(r.get('name'))}{_origin_badge(r)}</td>")
         bits.append(f"<td class='muted'>{_esc(r.get('origin'))}</td>")
         bits.append(f"<td class='num'>{int((r.get('baseline') or {}).get('mentions') or 0)}</td>")
         bits.append(f"<td class='num'>{int((r.get('current') or {}).get('mentions') or 0)}</td>")
         bits.append(f"<td class='num delta {cls}'>{_esc(_pp_int(r.get('delta')))}</td>")
+        bits.append(
+            f"<td class='num delta {_delta_class(r.get('share_delta_pp'), invert=not r.get('is_brand'))}'>"
+            f"{_esc(_pp_label(r.get('share_delta_pp')))}</td>"
+        )
         bits.append(f"<td class='num'>{_esc(_pp_int(r.get('delta_answer')))}</td>")
-        bits.append(f"<td class='num'>{_esc(_pp_int(r.get('delta_search_box')))}</td>")
+        bits.append("</tr>")
+    bits.append("</tbody></table></div>")
+    return "".join(bits)
+
+
+def _rank_chip(label: str) -> str:
+    raw = label or "—"
+    cls = "flat"
+    if raw == "NEW":
+        cls = "new"
+    elif raw == "OUT":
+        cls = "out"
+    elif raw.startswith("↑"):
+        cls = "up"
+    elif raw.startswith("↓"):
+        cls = "down"
+    return f"<span class='rank-chip {cls}'>{_esc(raw)}</span>"
+
+
+def _rank_table(rows: list[dict[str, Any]], engines: list[str]) -> str:
+    if not rows:
+        return "<p class='hint'>No vendors on either side at this floor.</p>"
+    show_eng = len(engines) > 1
+    bits = [
+        "<div class='table-wrap'><table class='data sortable' id='rank-table'><thead><tr>",
+        "<th>Name</th><th class='num'>Base rank</th><th class='num'>Now rank</th><th>Rank Δ</th>",
+        "<th class='num'>Baseline</th><th class='num'>Current</th><th class='num'>Δ</th>",
+        "<th class='num'>Share now</th>",
+    ]
+    if show_eng:
+        for e in engines:
+            bits.append(f"<th class='num'>{_esc(e)}</th>")
+    bits.append("</tr></thead><tbody>")
+    for r in rows:
+        cls = "brand-row" if r.get("is_brand") else ""
+        bits.append(f"<tr class='{cls}' data-engines='{_esc(_engines_attr(r))}'>")
+        bits.append(f"<td>{_esc(r.get('name'))}{_origin_badge(r)}</td>")
+        bits.append(f"<td class='num'>{r.get('baseline_rank') or '—'}</td>")
+        bits.append(f"<td class='num'>{r.get('current_rank') or '—'}</td>")
+        bits.append(f"<td>{_rank_chip(str(r.get('rank_label') or '—'))}</td>")
+        bits.append(f"<td class='num'>{int((r.get('baseline') or {}).get('mentions') or 0)}</td>")
+        bits.append(f"<td class='num'>{int((r.get('current') or {}).get('mentions') or 0)}</td>")
+        invert = not r.get("is_brand")
+        bits.append(
+            f"<td class='num delta {_delta_class(r.get('delta'), invert=invert)}'>"
+            f"{_esc(_pp_int(r.get('delta')))}</td>"
+        )
+        bits.append(
+            f"<td class='num'>{_esc(_share_label((r.get('current') or {}).get('share')))}</td>"
+        )
+        if show_eng:
+            by_e = r.get("by_engine") or {}
+            for e in engines:
+                slot = by_e.get(e) or {}
+                bits.append(
+                    f"<td class='num'>{int(slot.get('baseline') or 0)}→{int(slot.get('current') or 0)}</td>"
+                )
         bits.append("</tr>")
     bits.append("</tbody></table></div>")
     return "".join(bits)
@@ -879,12 +1318,36 @@ def render_change_html(payload: dict[str, Any]) -> str:
         f"<p><b>{len(incomplete)}</b> matched prompt×engine×arm pairs are error or missing on one side "
         "and are excluded from rates and transitions.</p></article>"
     )
+    floor = methodology.get("floor") or vendors.get("floor") or DEFAULT_FLOOR
     parts.append(
-        "<article><h3>Δpp</h3>"
-        "<p>Percentage-point change: (current rate − baseline rate) × 100. "
-        "Vendor Δ is a mention-count change (answer + search-box names), after normalize.</p></article>"
+        "<article><h3>Floor + Δ</h3>"
+        f"<p>OUT / disappeared when current mentions &lt; <b>{int(floor)}</b> "
+        f"(default 1 = count == 0). NEW when baseline &lt; {int(floor)}. "
+        "Δpp is (current rate − baseline rate) × 100. Vendor Δ is mention count "
+        "(answer + search-box), after normalize. Share is of the competitor field "
+        "(brand share is brand / (brand + field)).</p></article>"
     )
     parts.append("</div></section>")
+
+    coverage = payload.get("engine_coverage") or methodology.get("engine_coverage") or {}
+    skipped = coverage.get("missing_in_current") or []
+    added_eng = coverage.get("missing_in_baseline") or []
+    comparable = coverage.get("comparable") or vendors.get("compared_engines") or engines
+    if skipped or added_eng:
+        parts.append("<aside class='gap-banner'>")
+        if skipped:
+            parts.append(
+                f"<p><b>Engine gap.</b> Baseline has <b>{_esc(', '.join(skipped))}</b> "
+                "and current does not. Competitor ranks and NEW/OUT use only "
+                f"<b>{_esc(', '.join(comparable) or 'overlapping engines')}</b>. "
+                "A drop-off that existed only on the missing engine is not a market change.</p>"
+            )
+        if added_eng:
+            parts.append(
+                f"<p>Current also has <b>{_esc(', '.join(added_eng))}</b> which baseline lacked. "
+                "Those cells are in brand rates, not in competitor ranks.</p>"
+            )
+        parts.append("</aside>")
 
     parts.append("<section class='actions'>")
     parts.append("<p class='eyebrow'>Summary</p>")
@@ -930,7 +1393,120 @@ def render_change_html(payload: dict[str, Any]) -> str:
             "<p class='metric-n'>None</p>"
             "<p class='hint'>No new off-seed vendor in current</p></article>"
         )
+    parts.append(
+        "<article class='metric'><p class='eyebrow'>New / OUT</p>"
+        f"<p class='metric-n'>{int(summary.get('new_count') or 0)}"
+        f"<span class='slash'>/</span>{int(summary.get('disappeared_count') or 0)}</p>"
+        f"<p class='hint'>names crossing the floor ({int(floor)})</p></article>"
+    )
     parts.append("</div></section>")
+
+    bvf = vendors.get("brand_vs_field") or summary.get("brand_vs_field") or {}
+    brand_blk = bvf.get("brand") or {}
+    field_blk = bvf.get("field") or {}
+    parts.append("<h2>Brand vs field</h2>")
+    parts.append(
+        f"<p class='hint'>{_esc(brand)} named-cell count next to the competitor field "
+        "(sum of vendor mentions on comparable engines). Did we rise while Kong fell?</p>"
+    )
+    parts.append("<div class='table-wrap'><table class='data'><thead><tr>")
+    parts.append(
+        "<th></th><th class='num'>Baseline</th><th class='num'>Current</th><th class='num'>Δ</th>"
+    )
+    parts.append("</tr></thead><tbody>")
+    parts.append(
+        "<tr class='brand-row'><td>"
+        f"{_esc(brand)} <span class='badge-brand'>brand</span> named cells</td>"
+        f"<td class='num'>{int(brand_blk.get('baseline_mentions') or 0)}</td>"
+        f"<td class='num'>{int(brand_blk.get('current_mentions') or 0)}</td>"
+        f"<td class='num delta {_delta_class(brand_blk.get('delta'))}'>"
+        f"{_esc(_pp_int(brand_blk.get('delta')))}</td></tr>"
+    )
+    parts.append(
+        "<tr><td>Competitor field (mentions)</td>"
+        f"<td class='num'>{int(field_blk.get('baseline_mentions') or 0)}</td>"
+        f"<td class='num'>{int(field_blk.get('current_mentions') or 0)}</td>"
+        f"<td class='num delta {_delta_class(field_blk.get('delta'), invert=True)}'>"
+        f"{_esc(_pp_int(field_blk.get('delta')))}</td></tr>"
+    )
+    share = brand_blk.get("share") or {}
+    parts.append(
+        f"<tr><td>{_esc(brand)} share of named</td>"
+        f"<td class='num'>{_esc(_share_label(share.get('baseline')))}</td>"
+        f"<td class='num'>{_esc(_share_label(share.get('current')))}</td>"
+        f"<td class='num delta {_delta_class(share.get('delta_pp'))}'>"
+        f"{_esc(_pp_label(share.get('delta_pp')))}</td></tr>"
+    )
+    for arm, lab in (("search", "Mention S"), ("knowledge", "Mention K")):
+        pair = brand_blk.get(arm) or {}
+        parts.append(f"<tr><td>{lab}</td>{_rate_cell(pair)}</tr>")
+    lead_b = (bvf.get("leader") or {}).get("baseline") or {}
+    lead_c = (bvf.get("leader") or {}).get("current") or {}
+    parts.append(
+        "<tr><td>Field leader (ex-brand)</td>"
+        f"<td>{_esc(lead_b.get('name') or '—')} "
+        f"<span class='muted'>{lead_b.get('mentions') or ''}</span></td>"
+        f"<td>{_esc(lead_c.get('name') or '—')} "
+        f"<span class='muted'>{lead_c.get('mentions') or ''}</span></td>"
+        f"<td class='muted'>{'same' if lead_b.get('name') == lead_c.get('name') else 'changed'}</td></tr>"
+    )
+    parts.append("</tbody></table></div>")
+
+    compared = list(vendors.get("compared_engines") or comparable)
+    if len(compared) > 1:
+        parts.append("<div class='chips' id='engine-chips'>")
+        parts.append("<button type='button' class='chip on' data-engine='all'>all engines</button>")
+        for e in compared:
+            parts.append(
+                f"<button type='button' class='chip' data-engine='{_esc(e)}'>{_esc(e)}</button>"
+            )
+        parts.append("</div>")
+        parts.append(
+            "<p class='hint'>Filter NEW / OUT / movers / rank to names that appeared on that engine.</p>"
+        )
+
+    parts.append("<h2>Rank table</h2>")
+    parts.append(
+        f"<p class='hint'>Top {int(vendors.get('top_n') or DEFAULT_TOP_N)} by either run "
+        "(brand included). Rank Δ is ↑ better / ↓ worse / NEW / OUT. "
+        f"Compared engines: {_esc(', '.join(compared) or '—')}.</p>"
+    )
+    parts.append(_rank_table(vendors.get("rank") or [], compared))
+
+    parts.append("<h2>New competitors</h2>")
+    parts.append(
+        f"<p class='hint'>Named in current, below floor ({int(floor)}) in baseline. "
+        "Split known-seed vs surprise when vendors_judged exists on current.</p>"
+    )
+    if vendors.get("source", {}).get("current") == "vendors_judged" or vendors.get("new_surprise"):
+        parts.append("<h3>Known seed</h3>")
+        parts.append(_vendor_table(vendors.get("new_known") or [], "No new seed-list competitors."))
+        parts.append("<h3>Surprise</h3>")
+        parts.append(_vendor_table(vendors.get("new_surprise") or [], "No new off-seed names."))
+    else:
+        parts.append(
+            _vendor_table(
+                vendors.get("new") or [],
+                "No new competitors. (Regex-only sides cannot invent surprises.)",
+            )
+        )
+
+    parts.append("<h2>No longer ranking</h2>")
+    parts.append(
+        f"<p class='hint'>Present in baseline (≥ floor {int(floor)}), gone or near-zero in current. "
+        "Do not read these as market change if an engine was skipped (see banner).</p>"
+    )
+    parts.append(_vendor_table(vendors.get("disappeared") or [], "Nobody left the ranking."))
+
+    parts.append("<h2>Risers / fallers</h2>")
+    parts.append(
+        "<p class='hint'>Largest mention-count Δ among names still ranking on both sides. "
+        "Share Δ is percentage points of the competitor field.</p>"
+    )
+    parts.append("<h3>Risers</h3>")
+    parts.append(_vendor_table(vendors.get("risers") or [], "No risers."))
+    parts.append("<h3>Fallers</h3>")
+    parts.append(_vendor_table(vendors.get("fallers") or [], "No fallers."))
 
     parts.append("<h2>Brand mention rates</h2>")
     parts.append(
@@ -954,20 +1530,6 @@ def render_change_html(payload: dict[str, Any]) -> str:
                 f"{_rate_cell(rec.get(arm) or {})}</tr>"
             )
     parts.append("</tbody></table></div>")
-
-    parts.append("<h2>Competitor / vendor fan-out</h2>")
-    parts.append(
-        "<p class='hint'>Mention count = cells that named the vendor in the answer plus cells "
-        "that typed it into the search box. Names are normalized. Surprises are off the config seed list.</p>"
-    )
-    parts.append("<h3>Risers</h3>")
-    parts.append(_vendor_table(vendors.get("risers") or [], "No risers."))
-    parts.append("<h3>Fallers</h3>")
-    parts.append(_vendor_table(vendors.get("fallers") or [], "No fallers."))
-    parts.append("<h3>New entrants</h3>")
-    parts.append(_vendor_table(vendors.get("new") or [], "No new vendors."))
-    parts.append("<h3>Disappeared</h3>")
-    parts.append(_vendor_table(vendors.get("disappeared") or [], "Nobody disappeared."))
 
     counts = transitions.get("counts") or {}
     parts.append("<h2>Prompt-level brand transitions</h2>")
@@ -1105,9 +1667,26 @@ padding:8px;border-bottom:1px solid var(--line);background:#12161c;cursor:defaul
 .delta.up{color:var(--rec)}
 .delta.down{color:var(--rej)}
 .delta.flat{color:var(--muted)}
-.badge-surprise{display:inline-block;margin-left:6px;padding:0 6px;border-radius:999px;
-font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:650;
-background:rgba(240,163,107,.18);color:var(--wrn);vertical-align:middle}
+.badge-surprise,.badge-brand{display:inline-block;margin-left:6px;padding:0 6px;border-radius:999px;
+font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:650;vertical-align:middle}
+.badge-surprise{background:rgba(240,163,107,.18);color:var(--wrn)}
+.badge-brand{background:rgba(232,184,109,.16);color:var(--men)}
+.gap-banner{background:rgba(240,163,107,.1);border:1px solid rgba(240,163,107,.35);border-radius:14px;
+padding:14px 18px;margin:0 0 22px;color:var(--wrn)}
+.gap-banner p{margin:0 0 8px}.gap-banner p:last-child{margin:0}
+.slash{color:var(--muted);margin:0 6px;font-weight:400}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.chip{border:1px solid var(--line);background:transparent;color:var(--text);border-radius:999px;
+padding:4px 11px;font-size:12px;cursor:pointer}
+.chip.on{border-color:var(--teal);color:var(--teal)}
+tr.brand-row td{background:rgba(232,184,109,.06)}
+.rank-chip{display:inline-block;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:650;
+border:1px solid var(--line)}
+.rank-chip.up{color:var(--rec);background:rgba(110,231,183,.12)}
+.rank-chip.down{color:var(--rej);background:rgba(224,122,122,.12)}
+.rank-chip.new{color:var(--men);background:rgba(232,184,109,.14)}
+.rank-chip.out{color:var(--miss)}
+.rank-chip.flat{color:var(--muted)}
 .chip-t{display:inline-block;border-radius:999px;padding:2px 8px;font-size:11px;border:1px solid var(--line)}
 .chip-t.miss_to_hit{color:var(--rec);background:rgba(110,231,183,.12)}
 .chip-t.hit_to_miss{color:var(--rej);background:rgba(224,122,122,.12)}
@@ -1123,23 +1702,42 @@ footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);color:v
 
 _JS = r"""
 (function(){
-  const table = document.getElementById('transitions');
-  if(!table) return;
-  const tbody = table.tBodies[0];
-  table.querySelectorAll('th').forEach(function(th, idx){
-    th.addEventListener('click', function(){
-      const rows = Array.from(tbody.rows);
-      const dir = th.dataset.dir === 'asc' ? -1 : 1;
-      table.querySelectorAll('th').forEach(function(h){ h.dataset.dir = ''; });
-      th.dataset.dir = dir === 1 ? 'asc' : 'desc';
-      rows.sort(function(a,b){
-        const va = (a.cells[idx] && a.cells[idx].innerText || '').toLowerCase();
-        const vb = (b.cells[idx] && b.cells[idx].innerText || '').toLowerCase();
-        if(va < vb) return -1 * dir;
-        if(va > vb) return 1 * dir;
-        return 0;
+  document.querySelectorAll('table.sortable').forEach(function(table){
+    const tbody = table.tBodies[0];
+    if(!tbody) return;
+    table.querySelectorAll('th').forEach(function(th, idx){
+      th.addEventListener('click', function(){
+        const rows = Array.from(tbody.rows);
+        const dir = th.dataset.dir === 'asc' ? -1 : 1;
+        table.querySelectorAll('th').forEach(function(h){ h.dataset.dir = ''; });
+        th.dataset.dir = dir === 1 ? 'asc' : 'desc';
+        rows.sort(function(a,b){
+          const va = (a.cells[idx] && a.cells[idx].innerText || '').toLowerCase();
+          const vb = (b.cells[idx] && b.cells[idx].innerText || '').toLowerCase();
+          const na = parseFloat(va.replace(/[^0-9.+-]/g,''));
+          const nb = parseFloat(vb.replace(/[^0-9.+-]/g,''));
+          if(!isNaN(na) && !isNaN(nb) && va.search(/[0-9]/) >= 0){
+            return (na - nb) * dir;
+          }
+          if(va < vb) return -1 * dir;
+          if(va > vb) return 1 * dir;
+          return 0;
+        });
+        rows.forEach(function(r){ tbody.appendChild(r); });
       });
-      rows.forEach(function(r){ tbody.appendChild(r); });
+    });
+  });
+  const chips = document.querySelectorAll('#engine-chips .chip');
+  chips.forEach(function(chip){
+    chip.addEventListener('click', function(){
+      chips.forEach(function(c){ c.classList.remove('on'); });
+      chip.classList.add('on');
+      const eng = chip.getAttribute('data-engine') || 'all';
+      document.querySelectorAll('tr[data-engines]').forEach(function(tr){
+        const list = (tr.getAttribute('data-engines') || '').split(/\s+/);
+        const ok = eng === 'all' || list.indexOf(eng) >= 0;
+        tr.style.display = ok ? '' : 'none';
+      });
     });
   });
 })();

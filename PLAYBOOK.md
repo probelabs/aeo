@@ -532,9 +532,16 @@ python3.11 scripts/change_report.py \
 
 `--baseline` may be a run directory **or** a single evidence JSON (older Tyk boards often have no `vendors_judged.json`; regex `competitor_mentions` / `vendors_in_search_queries` is the fallback). Writes `change.json` (machine) and `*-change-report.html` (human):
 
-1. Brand mention rates per engine × arm (K/S) — absolute rates + Δpp — plus search_rate Δ.
-2. Prompt-level transitions on matching `prompt_id` + engine + arm: miss→hit, hit→miss, hit→hit (stance/position when both sides have `judge.json`), still-miss. Unmatched prompt_ids and incomplete cells are listed, not scored.
-3. Competitor / vendor fan-out: risers, fallers, new, disappeared. Prefers `vendors_judged.json` (known vs surprise); else regex. Names are normalized.
-4. A short summary block (brand Δ, biggest competitor mover, new surprise).
+1. **Brand vs field** — brand named-cell count / mention rates next to the competitor field (did we rise while Kong fell?).
+2. **Rank table** — top 15 by either run, brand included: baseline rank vs current rank, rank Δ (`↑3` / `↓2` / `NEW` / `OUT`).
+3. **New competitors** — current ≥ floor, baseline below it. Split known-seed vs surprise when `vendors_judged` exists.
+4. **No longer ranking / disappeared** — baseline ≥ floor, current below it.
+5. **Risers / fallers** — largest mention-count Δ (and share of the field) among names still ranking.
+6. Brand mention rates per engine × arm (K/S) + Δpp + search_rate Δ.
+7. Prompt-level transitions on matching `prompt_id` + engine + arm: miss→hit, hit→miss, hit→hit (stance/position when both sides have `judge.json`), still-miss.
 
-Math is deterministic Python. Same roster is assumed.
+**Floor** (default `--floor 1`): a name is OUT when current mentions &lt; floor (count == 0 at the default). Raise `--floor 2` to treat a leftover single mention as near-zero. Documented on the page.
+
+**Engine gaps:** ranks use engines present on **both** sides. If current skipped Grok, the report banners that — a Grok-only name is not a market drop.
+
+Unmatched prompt_ids and incomplete cells are listed, not scored. Math is deterministic Python. Same roster is assumed. `--top N` caps the rank table.

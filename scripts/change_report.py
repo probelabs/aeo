@@ -45,6 +45,18 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help="Output directory (default: current run dir, or its parent if a file)",
     )
+    parser.add_argument(
+        "--floor",
+        type=int,
+        default=1,
+        help="OUT/NEW floor (default 1 = count==0). Mentions below this are not ranking.",
+    )
+    parser.add_argument(
+        "--top",
+        type=int,
+        default=15,
+        help="Top-N vendors in the rank table by either run (default 15)",
+    )
     args = parser.parse_args(argv)
 
     baseline = load_run(Path(args.baseline))
@@ -53,7 +65,9 @@ def main(argv: list[str] | None = None) -> int:
     if not brand:
         parser.error("brand is required: pass --brand or set AEO_BRAND / workspace.brand")
 
-    payload = diff_runs(baseline, current, brand=brand)
+    if args.floor < 1:
+        parser.error("--floor must be >= 1")
+    payload = diff_runs(baseline, current, brand=brand, floor=args.floor, top_n=args.top)
     if args.out:
         out_dir = Path(args.out)
     elif current.path.is_dir():

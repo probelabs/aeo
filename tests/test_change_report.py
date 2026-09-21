@@ -340,6 +340,17 @@ class ChangeReportTests(unittest.TestCase):
             self.assertEqual(names["Apigee"]["status"], "faller")
             self.assertTrue(any(r["name"] == "Kong" for r in payload["competitors"]["risers"]))
             self.assertTrue(any(r["name"] == "Apigee" for r in payload["competitors"]["fallers"]))
+            self.assertTrue(any(r["name"] == "UserCheck" for r in payload["competitors"]["new_surprise"]))
+            self.assertTrue(any(r["name"] == "UserCheck" for r in payload["competitors"]["new"]))
+            rank_by = {r["name"]: r for r in payload["competitors"]["rank"]}
+            self.assertIn("Tyk", rank_by)
+            self.assertTrue(rank_by["Tyk"]["is_brand"])
+            self.assertEqual(rank_by["UserCheck"]["rank_label"], "NEW")
+            self.assertIn(rank_by["Kong"]["rank_label"][0], {"↑", "↓", "—"})
+            bvf = payload["competitors"]["brand_vs_field"]
+            self.assertGreater(bvf["brand"]["current_mentions"], bvf["brand"]["baseline_mentions"])
+            self.assertIn("field", bvf)
+            self.assertEqual(payload["competitors"]["floor"], 1)
 
     def test_riser_faller_new_disappeared(self):
         with tempfile.TemporaryDirectory() as td:
@@ -398,8 +409,14 @@ class ChangeReportTests(unittest.TestCase):
             self.assertIn("UserCheck", html)
             self.assertIn("badge-surprise", html)
             self.assertIn("Brand mention rates", html)
+            self.assertIn("Brand vs field", html)
+            self.assertIn("Rank table", html)
+            self.assertIn("New competitors", html)
+            self.assertIn("No longer ranking", html)
+            self.assertIn("Risers / fallers", html)
             self.assertIn("Unmatched prompt ids", html)
             self.assertIn("same roster", html.lower())
+            self.assertIn("floor", html.lower())
 
             json_path, html_path = write_change_report(payload, current)
             self.assertTrue(json_path.exists())
@@ -469,6 +486,117 @@ class ChangeReportTests(unittest.TestCase):
             text = htmls[0].read_text()
             self.assertIn("tyk100-20260901", text)
             self.assertIn("tyk100-20260921", text)
+            self.assertIn("Rank table", text)
+            self.assertIn("Brand vs field", text)
+
+    def test_floor_treats_near_zero_as_out(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            baseline = _write_run(
+                tmp,
+                name="b",
+                prompts_by_engine={
+                    "claude": [
+                        _prompt("a", "claude", _arm(comps=["Kong"]), _arm(comps=["Kong"], searched=True)),
+                        _prompt("b", "claude", _arm(comps=["Kong"]), _arm(comps=["Apigee"], searched=True)),
+                    ]
+                },
+            )
+            current = _write_run(
+                tmp,
+                name="c",
+                prompts_by_engine={
+                    "claude": [
+                        _prompt("a", "claude", _arm(comps=["Kong"]), _arm(searched=True)),
+                        _prompt("b", "claude", _arm(), _arm(comps=["Apigee"], searched=True)),
+                    ]
+                },
+            )
+            payload = diff_runs(load_run(baseline), load_run(current), brand="Tyk", floor=2)
+            names = {r["name"]: r for r in payload["competitors"]["all"]}
+            self.assertEqual(payload["competitors"]["floor"], 2)
+            # Kong baseline 3, current 1 (< 2) → OUT
+            self.assertEqual(names["Kong"]["status"], "disappeared")
+            self.assertTrue(any(r["name"] == "Kong" for r in payload["competitors"]["disappeared"]))
+            self.assertIn("floor", payload["methodology"]["floor_note"].lower())
+
+    def test_skipped_engine_is_not_a_market_drop(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            baseline = _write_run(
+                tmp,
+                name="b",
+                prompts_by_engine={
+                    "claude": [
+                        _prompt("a", "claude", _arm(comps=["Kong"]), _arm(comps=["Kong"], searched=True)),
+                    ],
+                    "grok": [
+                        _prompt("a", "grok", _arm(comps=["Apigee"]), _arm(comps=["Apigee"], searched=True)),
+                    ],
+                },
+            )
+            current = _write_run(
+                tmp,
+                name="c",
+                prompts_by_engine={
+                    "claude": [
+                        _prompt("a", "claude", _arm(comps=["Kong"]), _arm(comps=["Kong"], searched=True)),
+                    ],
+                },
+            )
+            payload = diff_runs(load_run(baseline), load_run(current), brand="Tyk")
+            cov = payload["engine_coverage"]
+            self.assertEqual(cov["missing_in_current"], ["grok"])
+            self.assertEqual(cov["comparable"], ["claude"])
+            names = {r["name"] for r in payload["competitors"]["all"]}
+            self.assertIn("Kong", names)
+            self.assertNotIn("Apigee", names)
+            html = render_change_html(payload)
+            self.assertIn("Engine gap", html)
+            self.assertIn("grok", html.lower())
+            self.assertIn("not a market change", html.lower())
+
+    def test_rank_labels_new_and_out(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            seeds = ["Kong", "Apigee", "Zuplo"]
+            baseline = _write_run(
+                tmp,
+                name="b",
+                competitors=seeds,
+                prompts_by_engine={
+                    "claude": [
+                        _prompt(
+                            "a",
+                            "claude",
+                            _arm(mentioned=True, comps=["Kong", "Apigee"]),
+                            _arm(comps=["Kong"], searched=True, qvendors=["Kong"]),
+                        ),
+                    ]
+                },
+            )
+            current = _write_run(
+                tmp,
+                name="c",
+                competitors=seeds,
+                prompts_by_engine={
+                    "claude": [
+                        _prompt(
+                            "a",
+                            "claude",
+                            _arm(mentioned=True, comps=["Kong", "Zuplo"]),
+                            _arm(comps=["Kong"], searched=True, qvendors=["Kong"]),
+                        ),
+                    ]
+                },
+            )
+            payload = diff_runs(load_run(baseline), load_run(current), brand="Tyk")
+            by_name = {r["name"]: r for r in payload["competitors"]["rank"]}
+            self.assertEqual(by_name["Zuplo"]["rank_label"], "NEW")
+            self.assertEqual(by_name["Apigee"]["rank_label"], "OUT")
+            self.assertTrue(by_name["Tyk"]["is_brand"])
+            self.assertIn("NEW", render_change_html(payload))
+            self.assertIn("OUT", render_change_html(payload))
 
 
 if __name__ == "__main__":
