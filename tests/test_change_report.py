@@ -747,6 +747,76 @@ class ChangeReportTests(unittest.TestCase):
         )
         return baseline, current
 
+    def test_aws_and_amazon_api_gateway_merge_in_diff(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            seeds = ["aws api gateway", "amazon api gateway", "Kong"]
+            baseline = _write_run(
+                tmp,
+                name="b",
+                competitors=seeds,
+                prompts_by_engine={
+                    "claude": [
+                        _prompt(
+                            "a",
+                            "claude",
+                            _arm(comps=["aws api gateway", "Kong"]),
+                            _arm(comps=["aws api gateway"], searched=True),
+                        )
+                    ]
+                },
+            )
+            current = _write_run(
+                tmp,
+                name="c",
+                competitors=seeds,
+                prompts_by_engine={
+                    "claude": [
+                        _prompt(
+                            "a",
+                            "claude",
+                            _arm(comps=["amazon api gateway", "Kong"]),
+                            _arm(comps=["amazon api gateway", "AWS API Gateway"], searched=True),
+                        )
+                    ]
+                },
+            )
+            payload = diff_runs(load_run(baseline), load_run(current), brand="Tyk")
+            names = {r["name"]: r for r in payload["competitors"]["all"]}
+            self.assertIn("Amazon API Gateway", names)
+            self.assertNotIn("Aws Api Gateway", names)
+            self.assertNotIn("AWS API Gateway", names)
+            self.assertEqual([n for n in names if "api gateway" in n.lower()], ["Amazon API Gateway"])
+            amazon = names["Amazon API Gateway"]
+            self.assertGreater(amazon["current"]["mentions"], 0)
+            self.assertGreater(amazon["baseline"]["mentions"], 0)
+
+    def test_azure_apim_merges_in_diff(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            seeds = ["azure apim", "azure api management"]
+            baseline = _write_run(
+                tmp,
+                name="b",
+                competitors=seeds,
+                prompts_by_engine={
+                    "claude": [_prompt("a", "claude", _arm(comps=["azure apim"]), _arm(searched=True))]
+                },
+            )
+            current = _write_run(
+                tmp,
+                name="c",
+                competitors=seeds,
+                prompts_by_engine={
+                    "claude": [
+                        _prompt("a", "claude", _arm(comps=["Azure API Management"]), _arm(searched=True))
+                    ]
+                },
+            )
+            payload = diff_runs(load_run(baseline), load_run(current), brand="Tyk")
+            names = {r["name"] for r in payload["competitors"]["all"]}
+            self.assertEqual(names, {"Azure API Management"})
+
     def test_interpretation_engine_split_claude_up_codex_down(self):
         with tempfile.TemporaryDirectory() as td:
             baseline, current = self._split_pair(Path(td))

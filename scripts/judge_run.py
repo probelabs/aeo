@@ -316,13 +316,14 @@ def summarize_for_board(
     counts.append("ahead " + json.dumps(ahead_c.most_common(12)))
     counts.append("class " + json.dumps({k: dict(v) for k, v in list(by_class.items())[:40]}))
     if docs:
-        brand, aliases, competitors = workspace_from_docs(docs)
+        brand, aliases, competitors, competitor_aliases = workspace_from_docs(docs)
         surprises = surprise_frequencies(
             docs,
             vendor_store or {},
             brand=brand or BRAND,
             aliases=aliases,
             competitors=competitors,
+            competitor_aliases=competitor_aliases,
         )
         counts.append("surprises " + json.dumps(surprises))
         counts.append("surprise_mentions " + str(sum(n for _, n in surprises)))
@@ -420,7 +421,7 @@ def resolve_brand(docs: dict[str, dict]) -> str:
     env = os.environ.get("AEO_BRAND")
     if env:
         return env
-    brand, _, _ = workspace_from_docs(docs)
+    brand, _, _, _ = workspace_from_docs(docs)
     return brand or "Tyk"
 
 
@@ -437,8 +438,10 @@ def run_vendor_pass(
 ) -> int:
     outp = out_dir / "vendors_judged.json"
     store = load_vendor_store(load_store(outp))
-    _, aliases, competitors = workspace_from_docs(docs)
-    amap = seed_alias_map(brand, aliases, competitors)
+    _, aliases, competitors, competitor_aliases = workspace_from_docs(docs)
+    amap = seed_alias_map(
+        brand, aliases, competitors, competitor_aliases=competitor_aliases
+    )
     todo = []
     for e in engines:
         doc = docs.get(e)

@@ -39,6 +39,16 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
         self.assertEqual(doc["prompts"][0]["class"], "watch")
 
+    def test_tyk_config_validates(self):
+        doc = json.loads(
+            (ROOT / "examples" / "tyk" / "aeo.config.json").read_text(encoding="utf-8")
+        )
+        errors = validate_config(doc)
+        self.assertEqual(errors, [], errors)
+        self.assertIn("Amazon API Gateway", doc["competitors"])
+        self.assertNotIn("aws api gateway", [c.lower() for c in doc["competitors"]])
+        self.assertIn("Amazon API Gateway", doc["competitor_aliases"])
+
     def test_xerj_config_validates(self):
         doc = json.loads(
             (ROOT / "examples" / "xerj" / "aeo.config.json").read_text(encoding="utf-8")

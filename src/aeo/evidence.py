@@ -20,12 +20,15 @@ def new_run_id() -> str:
 
 
 def workspace_from_config(cfg: Config) -> dict[str, Any]:
-    return {
+    out: dict[str, Any] = {
         "brand": cfg.brand,
         "domain": cfg.domain,
         "aliases": list(cfg.aliases),
         "competitors": list(cfg.competitors),
     }
+    if cfg.competitor_aliases:
+        out["competitor_aliases"] = {k: list(v) for k, v in cfg.competitor_aliases.items()}
+    return out
 
 
 def new_document(

@@ -11,6 +11,7 @@ from aeo.mention import (
     extract_vendors_in_queries,
 )
 from aeo.parsers import ParsedRun
+from aeo.vendors import expand_competitor_mention_terms
 
 
 def score_arm(
@@ -21,9 +22,12 @@ def score_arm(
 ) -> dict[str, Any]:
     text = parsed.raw_response_text
     brand_mentions = extract_brand_mentions(text, cfg.brand, cfg.aliases)
-    competitor_mentions = extract_competitor_mentions(text, cfg.competitors)
+    competitor_terms = expand_competitor_mention_terms(
+        cfg.competitors, cfg.competitor_aliases
+    )
+    competitor_mentions = extract_competitor_mentions(text, competitor_terms)
     vendors = extract_vendors_in_queries(
-        parsed.search_queries, cfg.brand, cfg.aliases, cfg.competitors
+        parsed.search_queries, cfg.brand, cfg.aliases, competitor_terms
     )
     brand_mentioned = bool(brand_mentions)
     arm: dict[str, Any] = {

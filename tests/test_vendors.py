@@ -4,6 +4,7 @@ from aeo.vendors import (
     AliasMap,
     annotate_vendor_cell,
     completed_cells,
+    expand_competitor_mention_terms,
     is_brand_vendor,
     merge_classified_vendors,
     merge_named_vendors,
@@ -15,6 +16,7 @@ from aeo.vendors import (
     query_vendors_for_arm,
     seed_alias_map,
     surprise_frequencies,
+    vendor_origin,
     who_got_named_counts,
 )
 
@@ -70,6 +72,49 @@ class AliasMergeTests(unittest.TestCase):
         amap.observe("Kickbox")
         amap.observe("kickbox.com")
         self.assertEqual(amap.display_for("kickbox"), "Kickbox")
+
+    def test_amazon_and_aws_api_gateway_share_key(self):
+        amap = seed_alias_map("Tyk", ["tyk"], ["aws api gateway", "amazon api gateway"])
+        self.assertEqual(amap.key_for("AWS API Gateway"), amap.key_for("Amazon API Gateway"))
+        self.assertEqual(amap.display_for("aws api gateway"), "Amazon API Gateway")
+        self.assertEqual(amap.display_for("amazon api gateway"), "Amazon API Gateway")
+        self.assertTrue(amap.is_seed("AWS API Gateway"))
+        self.assertTrue(amap.is_seed("amazon api gateway"))
+
+    def test_azure_apim_and_api_management_share_key(self):
+        amap = seed_alias_map("Tyk", ["tyk"], ["azure apim", "azure api management"])
+        self.assertEqual(amap.key_for("Azure APIM"), amap.key_for("Azure API Management"))
+        self.assertEqual(amap.display_for("azure apim"), "Azure API Management")
+        self.assertTrue(amap.is_seed("Azure APIM"))
+
+    def test_apache_apisix_collapses_to_canonical(self):
+        amap = seed_alias_map("Tyk", ["tyk"], ["apache apisix", "apisix"])
+        self.assertEqual(amap.key_for("APISIX"), amap.key_for("Apache APISIX"))
+        self.assertEqual(amap.display_for("apisix"), "Apache APISIX")
+
+    def test_config_aliases_collapse_custom_pair(self):
+        amap = seed_alias_map(
+            "Acme",
+            ["acme"],
+            ["Foo Bar"],
+            competitor_aliases={"Foo Bar": ["FB Cloud", "FooBar Cloud"]},
+        )
+        self.assertEqual(amap.key_for("FB Cloud"), amap.key_for("Foo Bar"))
+        self.assertEqual(amap.display_for("FB Cloud"), "Foo Bar")
+        self.assertTrue(amap.is_seed("FB Cloud"))
+
+    def test_builtin_synonym_is_not_a_seed_for_other_brands(self):
+        amap = seed_alias_map("Autheona", ["autheona"], ["Kickbox"])
+        self.assertFalse(amap.is_seed("Amazon API Gateway"))
+        self.assertEqual(
+            vendor_origin("Amazon API Gateway", None, amap, "Autheona", ["autheona"]),
+            "surprise",
+        )
+
+    def test_expand_mention_terms_includes_aws_spelling(self):
+        terms = {t.lower() for t in expand_competitor_mention_terms(["Amazon API Gateway"])}
+        self.assertIn("aws api gateway", terms)
+        self.assertIn("amazon api gateway", terms)
 
 
 class BrandFilterTests(unittest.TestCase):

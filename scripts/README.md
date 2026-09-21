@@ -25,6 +25,6 @@ python3.11 scripts/change_report.py \
 # optional: --floor 2 --top 15 --movers 10
 ```
 
-`AEO_RUN` is an alias for `AEO_TYK_RUN`. Brand comes from `AEO_BRAND`, else the evidence `workspace.brand`. Config `competitors` is the seed / known set (keep adding names up front). LLM extract still captures surprises; those are flagged, not folded into the known bars.
+`AEO_RUN` is an alias for `AEO_TYK_RUN`. Brand comes from `AEO_BRAND`, else the evidence `workspace.brand`. Config `competitors` is the seed / known set (keep adding names up front). Optional `competitor_aliases` maps a canonical display to extra spellings. Duplicate seeds still collapse (Amazon/AWS API Gateway, Azure APIM/Management). LLM extract still captures surprises; those are flagged, not folded into the known bars.
 
 Today the scripts default brand/paths to the Tyk board (`tyk100-20260901`). Point `AEO_TYK_RUN` at any run directory with the same evidence shape.

@@ -182,6 +182,7 @@ class RunSnapshot:
     brand: str
     aliases: list[str]
     competitors: list[str]
+    competitor_aliases: dict[str, list[str]] = field(default_factory=dict)
     run_ids: list[str] = field(default_factory=list)
     timestamps: list[str] = field(default_factory=list)
 
@@ -236,7 +237,7 @@ def load_run(path: Path) -> RunSnapshot:
 
     vendors = load_vendor_store(vendors_raw)
     rows = merge_rows(docs)
-    ws_brand, aliases, competitors = workspace_from_docs(docs)
+    ws_brand, aliases, competitors, competitor_aliases = workspace_from_docs(docs)
     run_ids: list[str] = []
     timestamps: list[str] = []
     for doc in docs.values():
@@ -257,6 +258,7 @@ def load_run(path: Path) -> RunSnapshot:
         brand=ws_brand,
         aliases=aliases,
         competitors=competitors,
+        competitor_aliases=competitor_aliases,
         run_ids=run_ids,
         timestamps=timestamps,
     )
@@ -712,11 +714,19 @@ def diff_vendors(
 ) -> dict[str, Any]:
     aliases = list(dict.fromkeys([*baseline.aliases, *current.aliases]))
     competitors = list(dict.fromkeys([*baseline.competitors, *current.competitors]))
+    competitor_aliases: dict[str, list[str]] = {}
+    for src in (baseline.competitor_aliases, current.competitor_aliases):
+        for canon, extra in (src or {}).items():
+            slot = competitor_aliases.setdefault(canon, [])
+            for item in extra or []:
+                if item not in slot:
+                    slot.append(item)
     alias_map = seed_alias_map(
         brand,
         aliases,
         competitors,
         list(baseline.vendors.values()) + list(current.vendors.values()),
+        competitor_aliases=competitor_aliases,
     )
     use_engines = list(engines or _engine_order(baseline.docs, current.docs))
     b = vendor_counts(baseline, brand=brand, aliases=aliases, alias_map=alias_map, engines=use_engines)

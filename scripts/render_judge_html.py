@@ -237,12 +237,14 @@ def render(run: Path) -> str:
     docs, judge, board, vendors_raw = load(run)
     rows = merge_rows(docs)
     eng_rates = rates(docs, judge, rows)
-    ws_brand, aliases, competitors = workspace_from_docs(docs)
+    ws_brand, aliases, competitors, competitor_aliases = workspace_from_docs(docs)
     brand = os.environ.get("AEO_BRAND") or ws_brand or "Tyk"
     if ws_brand:
         brand = ws_brand
     vendor_store = load_vendor_store(vendors_raw)
-    alias_map = seed_alias_map(brand, aliases, competitors, vendor_store.values())
+    alias_map = seed_alias_map(
+        brand, aliases, competitors, vendor_store.values(), competitor_aliases=competitor_aliases
+    )
     known_counts, surprise_counts = named_vendor_counts_by_origin(
         rows, vendor_store, brand=brand, aliases=aliases, alias_map=alias_map
     )
