@@ -200,6 +200,72 @@ class MergeCellTests(unittest.TestCase):
         self.assertEqual(by_name["Kickbox"], "known")
         self.assertEqual(by_name["IPQualityScore"], "known")
 
+    def test_stored_llm_origin_does_not_override_seed(self):
+        """vendors_judged `origin` is ignored; is_seed after synonym collapse wins."""
+        amap = seed_alias_map(
+            "Tyk",
+            ["tyk"],
+            ["aws api gateway", "amazon api gateway"],
+        )
+        recs = merge_classified_vendors(
+            [
+                {
+                    "raw": "Amazon API Gateway",
+                    "normalized": "Amazon API Gateway",
+                    "origin": "surprise",
+                },
+                {"raw": "UserCheck", "normalized": "UserCheck", "origin": "known"},
+            ],
+            [],
+            amap,
+            "Tyk",
+            ["tyk"],
+        )
+        by_name = {r["name"]: r["origin"] for r in recs}
+        self.assertEqual(by_name["Amazon API Gateway"], "known")
+        self.assertEqual(by_name["UserCheck"], "surprise")
+        self.assertTrue(amap.is_seed("Amazon API Gateway"))
+
+        store = {
+            "q|claude|knowledge": {
+                "vendors": [
+                    {
+                        "raw": "Amazon API Gateway",
+                        "normalized": "Amazon API Gateway",
+                        "origin": "surprise",
+                        "role": "mention",
+                    },
+                    {
+                        "raw": "UserCheck",
+                        "normalized": "UserCheck",
+                        "origin": "known",
+                        "role": "mention",
+                    },
+                ],
+            }
+        }
+        rows = [
+            {
+                "prompt_id": "q",
+                "engines": {
+                    "claude": {
+                        "knowledge": {
+                            "brand_mentioned": False,
+                            "competitor_mentions": ["amazon api gateway"],
+                            "raw_response_text": "Amazon API Gateway and UserCheck.",
+                        }
+                    }
+                },
+            }
+        ]
+        known, surprise = named_vendor_counts_by_origin(
+            rows, store, brand="Tyk", aliases=["tyk"], alias_map=amap
+        )
+        self.assertIn("Amazon API Gateway", known)
+        self.assertNotIn("Amazon API Gateway", surprise)
+        self.assertIn("UserCheck", surprise)
+        self.assertNotIn("UserCheck", known)
+
     def test_annotate_stamps_origin_and_drops_brand(self):
         amap = seed_alias_map("Autheona", ["autheona"], ["Kickbox"])
         cell = annotate_vendor_cell(

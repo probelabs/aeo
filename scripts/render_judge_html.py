@@ -29,6 +29,11 @@ def esc(s: str) -> str:
     return html.escape(s or "", quote=True)
 
 
+def search_chart_surprise_set(counts, brand: str, alias_map) -> set[str]:
+    """Search-chart surprise badges: not on the config seed list. Do not mix answer-side surprises."""
+    return {n for n in counts if n != brand and not alias_map.is_seed(n)}
+
+
 def format_named_list(items: list) -> str:
     """Join names; badge surprise records or `(surprise)` suffixes."""
     bits = []
@@ -249,7 +254,6 @@ def render(run: Path) -> str:
         rows, vendor_store, brand=brand, aliases=aliases, alias_map=alias_map
     )
     surprise_mentions = sum(surprise_counts.values())
-    surprise_names = set(surprise_counts)
     n_cells = sum(len((docs.get(e) or {}).get("prompts") or []) * 2 for e in ENGINES)
     # overall search mention / recommend / first among search hits
     sm = sc = rec = fir = wrn = 0
@@ -441,13 +445,14 @@ def render(run: Path) -> str:
     parts.append(
         f"<p class='hint'>Names inside search tool queries (search arm only): LLM extract of the "
         f"query strings, union regex over brand/aliases/config competitors, including {esc(brand)} "
-        "when an alias appeared in the query box. Surprise names (not on the seed list) are flagged. "
-        "Evidence <code>vendors_in_search_queries</code> and board ⚠ stay regex-only.</p>"
+        "when an alias appeared in the query box. A surprise badge here means the name is "
+        "<b>not on the config seed list</b> — this chart does not reuse answer-side Surprise "
+        "competitors. Evidence <code>vendors_in_search_queries</code> and board ⚠ stay regex-only.</p>"
     )
     parts.append("<div class='vendor-bars'>")
     if search_vendor_counts:
-        search_surprise = {n for n in search_vendor_counts if n != brand and not alias_map.is_seed(n)}
-        parts.append(vendor_rows(search_vendor_counts, brand_name=brand, surprise_set=search_surprise | surprise_names))
+        search_surprise = search_chart_surprise_set(search_vendor_counts, brand, alias_map)
+        parts.append(vendor_rows(search_vendor_counts, brand_name=brand, surprise_set=search_surprise))
     else:
         parts.append("<p class='hint'>Nobody typed vendor names into search (or no engine searched).</p>")
     parts.append("</div>")

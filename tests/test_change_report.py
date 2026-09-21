@@ -791,6 +791,96 @@ class ChangeReportTests(unittest.TestCase):
             self.assertGreater(amazon["current"]["mentions"], 0)
             self.assertGreater(amazon["baseline"]["mentions"], 0)
 
+    def test_seed_search_box_not_surprise_when_answer_has_other_surprise(self):
+        """Seed in the search box stays known; answer-side surprises do not leak onto it."""
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            seeds = ["aws api gateway", "amazon api gateway", "Kong"]
+            baseline = _write_run(
+                tmp,
+                name="b",
+                competitors=seeds,
+                prompts_by_engine={
+                    "claude": [
+                        _prompt(
+                            "a",
+                            "claude",
+                            _arm(comps=["amazon api gateway"]),
+                            _arm(
+                                comps=["amazon api gateway"],
+                                searched=True,
+                                qvendors=["amazon api gateway"],
+                            ),
+                        )
+                    ]
+                },
+            )
+            current = _write_run(
+                tmp,
+                name="c",
+                competitors=seeds,
+                prompts_by_engine={
+                    "claude": [
+                        _prompt(
+                            "a",
+                            "claude",
+                            _arm(comps=["amazon api gateway", "UserCheck"]),
+                            _arm(
+                                comps=["UserCheck"],
+                                searched=True,
+                                qvendors=["amazon api gateway", "UserCheck"],
+                            ),
+                        )
+                    ]
+                },
+                vendors={
+                    "a|claude|knowledge": {
+                        "vendors": [
+                            {
+                                "raw": "Amazon API Gateway",
+                                "normalized": "Amazon API Gateway",
+                                "role": "mention",
+                            },
+                            {
+                                "raw": "UserCheck",
+                                "normalized": "UserCheck",
+                                "role": "mention",
+                            },
+                        ],
+                    },
+                    "a|claude|search": {
+                        "vendors": [
+                            {"raw": "UserCheck", "normalized": "UserCheck", "role": "mention"},
+                        ],
+                        "query_vendors": [
+                            {
+                                "raw": "amazon api gateway",
+                                "normalized": "Amazon API Gateway",
+                                "role": "mention",
+                            },
+                            {
+                                "raw": "UserCheck",
+                                "normalized": "UserCheck",
+                                "role": "mention",
+                            },
+                        ],
+                    },
+                },
+            )
+            payload = diff_runs(load_run(baseline), load_run(current), brand="Tyk")
+            names = {r["name"]: r for r in payload["competitors"]["all"]}
+            amazon = names["Amazon API Gateway"]
+            self.assertFalse(amazon["surprise"])
+            self.assertEqual(amazon["origin"], "known")
+            self.assertGreater(amazon["current"]["search_box"], 0)
+            self.assertTrue(names["UserCheck"]["surprise"])
+            self.assertEqual(names["UserCheck"]["origin"], "surprise")
+            html = render_change_html(payload)
+            self.assertNotIn(
+                "Amazon API Gateway <span class='badge-surprise'>surprise</span>", html
+            )
+            self.assertIn("UserCheck <span class='badge-surprise'>surprise</span>", html)
+
     def test_azure_apim_merges_in_diff(self):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
