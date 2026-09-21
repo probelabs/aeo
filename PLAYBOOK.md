@@ -544,4 +544,4 @@ python3.11 scripts/change_report.py \
 
 **Engine gaps:** ranks use engines present on **both** sides. If current skipped Grok, the report banners that — a Grok-only name is not a market drop.
 
-Unmatched prompt_ids and incomplete cells are listed, not scored. Math is deterministic Python. Same roster is assumed. `--top N` caps the rank table.
+Unmatched prompt_ids and incomplete cells are listed, not scored. Math is deterministic Python. Same roster is assumed. `--top N` caps the rank table; `--movers N` caps risers/fallers. NEW/OUT HTML lists cap at 20 (full arrays stay in `change.json`).

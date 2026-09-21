@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from aeo.change import (
+    DEFAULT_TOP_LIST,
     diff_runs,
     load_run,
     render_change_html,
@@ -597,6 +598,88 @@ class ChangeReportTests(unittest.TestCase):
             self.assertTrue(by_name["Tyk"]["is_brand"])
             self.assertIn("NEW", render_change_html(payload))
             self.assertIn("OUT", render_change_html(payload))
+
+    def test_html_caps_new_list_and_colors_riser_up(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            seeds = [f"Vendor{i:02d}" for i in range(DEFAULT_TOP_LIST + 5)]
+            baseline = _write_run(
+                tmp,
+                name="b",
+                competitors=seeds + ["Kong"],
+                prompts_by_engine={
+                    "claude": [
+                        _prompt(
+                            "a",
+                            "claude",
+                            _arm(comps=["Kong"]),
+                            _arm(comps=["Kong"], searched=True),
+                        )
+                    ]
+                },
+            )
+            current = _write_run(
+                tmp,
+                name="c",
+                competitors=seeds + ["Kong"],
+                prompts_by_engine={
+                    "claude": [
+                        _prompt(
+                            "a",
+                            "claude",
+                            _arm(comps=["Kong"] + seeds),
+                            _arm(comps=["Kong"], searched=True),
+                        ),
+                        _prompt(
+                            "b",
+                            "claude",
+                            _arm(comps=["Kong"]),
+                            _arm(searched=True),
+                        ),
+                    ]
+                },
+            )
+            payload = diff_runs(load_run(baseline), load_run(current), brand="Tyk")
+            self.assertGreater(len(payload["competitors"]["new"]), DEFAULT_TOP_LIST)
+            html = render_change_html(payload)
+            self.assertIn(f"Showing {DEFAULT_TOP_LIST} of", html)
+            last = seeds[-1]
+            # change.json keeps the tail; HTML does not dump every name
+            self.assertTrue(any(r["name"] == last for r in payload["competitors"]["new"]))
+            self.assertNotIn(f">{last}<", html)
+            self.assertIn("delta up", html)
+            kong = next(r for r in payload["competitors"]["risers"] if r["name"] == "Kong")
+            self.assertGreater(kong["delta"], 0)
+            self.assertIn("<td>Kong</td>", html)
+
+    def test_cli_movers_flag(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "change_report_cli",
+            Path(__file__).resolve().parents[1] / "scripts" / "change_report.py",
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            baseline, current = self._pair(tmp)
+            rc = mod.main(
+                [
+                    "--baseline",
+                    str(baseline),
+                    "--current",
+                    str(current),
+                    "--brand",
+                    "Tyk",
+                    "--movers",
+                    "1",
+                ]
+            )
+            self.assertEqual(rc, 0)
+            dumped = json.loads((current / "change.json").read_text())
+            self.assertLessEqual(len(dumped["competitors"]["risers"]), 1)
+            self.assertLessEqual(len(dumped["competitors"]["fallers"]), 1)
 
 
 if __name__ == "__main__":

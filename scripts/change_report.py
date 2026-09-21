@@ -57,6 +57,12 @@ def main(argv: list[str] | None = None) -> int:
         default=15,
         help="Top-N vendors in the rank table by either run (default 15)",
     )
+    parser.add_argument(
+        "--movers",
+        type=int,
+        default=10,
+        help="How many risers and fallers to keep (default 10)",
+    )
     args = parser.parse_args(argv)
 
     baseline = load_run(Path(args.baseline))
@@ -67,7 +73,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.floor < 1:
         parser.error("--floor must be >= 1")
-    payload = diff_runs(baseline, current, brand=brand, floor=args.floor, top_n=args.top)
+    if args.movers < 1:
+        parser.error("--movers must be >= 1")
+    if args.top < 1:
+        parser.error("--top must be >= 1")
+    payload = diff_runs(
+        baseline,
+        current,
+        brand=brand,
+        floor=args.floor,
+        top_n=args.top,
+        top_movers=args.movers,
+    )
     if args.out:
         out_dir = Path(args.out)
     elif current.path.is_dir():

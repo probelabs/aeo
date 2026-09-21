@@ -22,7 +22,7 @@ python3.11 scripts/change_report.py \
   --baseline ~/.aeo/runs/tyk100-20260901 \
   --current  ~/.aeo/runs/tyk100-20260921 \
   --brand Tyk
-# optional: --floor 2 --top 15
+# optional: --floor 2 --top 15 --movers 10
 ```
 
 `AEO_RUN` is an alias for `AEO_TYK_RUN`. Brand comes from `AEO_BRAND`, else the evidence `workspace.brand`. Config `competitors` is the seed / known set (keep adding names up front). LLM extract still captures surprises; those are flagged, not folded into the known bars.

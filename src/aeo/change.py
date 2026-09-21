@@ -47,6 +47,8 @@ TRANSITION_LABELS = {
 DEFAULT_FLOOR = 1
 DEFAULT_TOP_N = 15
 DEFAULT_TOP_MOVERS = 10
+# HTML / scannable lists. change.json keeps the full NEW/OUT arrays.
+DEFAULT_TOP_LIST = 20
 
 
 def _esc(s: Any) -> str:
@@ -858,7 +860,7 @@ def diff_vendors(
         pool = [r for r in rows if (r.get(side) or {}).get("mentions", 0) >= floor]
         if not pool:
             return None
-        best = max(pool, key=lambda r: (r[side]["mentions"], -ord(r["name"][:1].lower() or "z")))
+        best = min(pool, key=lambda r: (-r[side]["mentions"], r["name"].lower()))
         return {"name": best["name"], "mentions": best[side]["mentions"], "origin": best["origin"]}
 
     brand_vs_field = {
@@ -898,6 +900,8 @@ def diff_vendors(
             f"Default floor is 1 (count == 0). Raise --floor to treat leftover singles as gone."
         ),
         "top_n": top_n,
+        "top_movers": top_movers,
+        "top_list": DEFAULT_TOP_LIST,
         "compared_engines": use_engines,
         "brand_vs_field": brand_vs_field,
         "rank": rank,
@@ -920,9 +924,15 @@ def _biggest_mover(vendors: dict[str, Any]) -> dict[str, Any] | None:
     ]
     if not candidates:
         return None
-    best = max(
+    # Prefer volume over a swarm of +1 new names; then incumbents that actually moved.
+    best = min(
         candidates,
-        key=lambda r: (abs(int(r["delta"])), abs(int(r.get("delta_answer") or 0)), r["name"].lower()),
+        key=lambda r: (
+            -abs(int(r["delta"])),
+            -max(int(r["current"]["mentions"]), int(r["baseline"]["mentions"])),
+            0 if r.get("status") in ("riser", "faller") else 1,
+            r["name"].lower(),
+        ),
     )
     return {
         "name": best["name"],
@@ -1031,6 +1041,10 @@ def diff_runs(
         raise ValueError("brand is required (--brand or workspace.brand)")
     if floor < 1:
         raise ValueError("floor must be >= 1")
+    if top_n < 1:
+        raise ValueError("top_n must be >= 1")
+    if top_movers < 1:
+        raise ValueError("top_movers must be >= 1")
     engines = _engine_order(baseline.docs, current.docs)
     coverage = engine_coverage(baseline, current)
     comparable = coverage["comparable"] or engines
@@ -1160,17 +1174,32 @@ def _engines_attr(r: dict[str, Any]) -> str:
     return " ".join(r.get("engines") or [])
 
 
-def _vendor_table(rows: list[dict[str, Any]], empty: str) -> str:
+def _vendor_table(
+    rows: list[dict[str, Any]],
+    empty: str,
+    *,
+    limit: int | None = None,
+    order_note: str = "",
+) -> str:
     if not rows:
         return f"<p class='hint'>{_esc(empty)}</p>"
-    bits = [
-        "<div class='table-wrap'><table class='data sortable'><thead><tr>",
-        "<th>Name</th><th>Origin</th><th class='num'>Baseline</th><th class='num'>Current</th>",
-        "<th class='num'>Δ</th><th class='num'>Share Δ</th><th class='num'>Answer Δ</th>",
-        "</tr></thead><tbody>",
-    ]
-    for r in rows:
-        cls = _delta_class(r.get("delta"), invert=not r.get("is_brand"))
+    shown = rows[:limit] if limit and limit > 0 else rows
+    bits: list[str] = []
+    if limit and len(rows) > limit:
+        bits.append(
+            f"<p class='hint'>Showing {len(shown)} of {len(rows)}"
+            + (f" — {order_note}." if order_note else ".")
+            + "</p>"
+        )
+    bits.append("<div class='table-wrap'><table class='data sortable'><thead><tr>")
+    bits.append(
+        "<th>Name</th><th>Origin</th><th class='num'>Baseline</th><th class='num'>Current</th>"
+        "<th class='num'>Δ</th><th class='num'>Share Δ</th><th class='num'>Answer Δ</th>"
+    )
+    bits.append("</tr></thead><tbody>")
+    for r in shown:
+        # Competitor dynamics: + is a rise, − is a fall (not brand-inverted).
+        cls = _delta_class(r.get("delta"))
         bits.append(f"<tr data-engines='{_esc(_engines_attr(r))}'>")
         bits.append(f"<td>{_esc(r.get('name'))}{_origin_badge(r)}</td>")
         bits.append(f"<td class='muted'>{_esc(r.get('origin'))}</td>")
@@ -1178,7 +1207,7 @@ def _vendor_table(rows: list[dict[str, Any]], empty: str) -> str:
         bits.append(f"<td class='num'>{int((r.get('current') or {}).get('mentions') or 0)}</td>")
         bits.append(f"<td class='num delta {cls}'>{_esc(_pp_int(r.get('delta')))}</td>")
         bits.append(
-            f"<td class='num delta {_delta_class(r.get('share_delta_pp'), invert=not r.get('is_brand'))}'>"
+            f"<td class='num delta {_delta_class(r.get('share_delta_pp'))}'>"
             f"{_esc(_pp_label(r.get('share_delta_pp')))}</td>"
         )
         bits.append(f"<td class='num'>{_esc(_pp_int(r.get('delta_answer')))}</td>")
@@ -1224,9 +1253,8 @@ def _rank_table(rows: list[dict[str, Any]], engines: list[str]) -> str:
         bits.append(f"<td>{_rank_chip(str(r.get('rank_label') or '—'))}</td>")
         bits.append(f"<td class='num'>{int((r.get('baseline') or {}).get('mentions') or 0)}</td>")
         bits.append(f"<td class='num'>{int((r.get('current') or {}).get('mentions') or 0)}</td>")
-        invert = not r.get("is_brand")
         bits.append(
-            f"<td class='num delta {_delta_class(r.get('delta'), invert=invert)}'>"
+            f"<td class='num delta {_delta_class(r.get('delta'))}'>"
             f"{_esc(_pp_int(r.get('delta')))}</td>"
         )
         bits.append(
@@ -1473,39 +1501,68 @@ def render_change_html(payload: dict[str, Any]) -> str:
     )
     parts.append(_rank_table(vendors.get("rank") or [], compared))
 
-    parts.append("<h2>New competitors</h2>")
+    new_n = len(vendors.get("new") or [])
+    out_n = len(vendors.get("disappeared") or [])
+    list_cap = int(vendors.get("top_list") or DEFAULT_TOP_LIST)
+    parts.append(f"<h2>New competitors <span class='count'>{new_n}</span></h2>")
     parts.append(
         f"<p class='hint'>Named in current, below floor ({int(floor)}) in baseline. "
-        "Split known-seed vs surprise when vendors_judged exists on current.</p>"
+        "Split known-seed vs surprise when vendors_judged exists on current. "
+        f"HTML shows the top {list_cap} by current mentions; change.json has the full list.</p>"
     )
     if vendors.get("source", {}).get("current") == "vendors_judged" or vendors.get("new_surprise"):
-        parts.append("<h3>Known seed</h3>")
-        parts.append(_vendor_table(vendors.get("new_known") or [], "No new seed-list competitors."))
-        parts.append("<h3>Surprise</h3>")
-        parts.append(_vendor_table(vendors.get("new_surprise") or [], "No new off-seed names."))
+        parts.append(f"<h3>Known seed ({len(vendors.get('new_known') or [])})</h3>")
+        parts.append(
+            _vendor_table(
+                vendors.get("new_known") or [],
+                "No new seed-list competitors.",
+                limit=list_cap,
+                order_note="ordered by current mentions",
+            )
+        )
+        parts.append(f"<h3>Surprise ({len(vendors.get('new_surprise') or [])})</h3>")
+        parts.append(
+            _vendor_table(
+                vendors.get("new_surprise") or [],
+                "No new off-seed names.",
+                limit=list_cap,
+                order_note="ordered by current mentions",
+            )
+        )
     else:
         parts.append(
             _vendor_table(
                 vendors.get("new") or [],
                 "No new competitors. (Regex-only sides cannot invent surprises.)",
+                limit=list_cap,
+                order_note="ordered by current mentions",
             )
         )
 
-    parts.append("<h2>No longer ranking</h2>")
+    parts.append(f"<h2>No longer ranking <span class='count'>{out_n}</span></h2>")
     parts.append(
         f"<p class='hint'>Present in baseline (≥ floor {int(floor)}), gone or near-zero in current. "
-        "Do not read these as market change if an engine was skipped (see banner).</p>"
+        "Do not read these as market change if an engine was skipped (see banner). "
+        f"HTML shows the top {list_cap} by baseline mentions.</p>"
     )
-    parts.append(_vendor_table(vendors.get("disappeared") or [], "Nobody left the ranking."))
+    parts.append(
+        _vendor_table(
+            vendors.get("disappeared") or [],
+            "Nobody left the ranking.",
+            limit=list_cap,
+            order_note="ordered by baseline mentions",
+        )
+    )
 
+    movers_n = int(vendors.get("top_movers") or DEFAULT_TOP_MOVERS)
     parts.append("<h2>Risers / fallers</h2>")
     parts.append(
-        "<p class='hint'>Largest mention-count Δ among names still ranking on both sides. "
-        "Share Δ is percentage points of the competitor field.</p>"
+        f"<p class='hint'>Largest mention-count Δ among names still ranking on both sides "
+        f"(top {movers_n}). Share Δ is percentage points of the competitor field.</p>"
     )
-    parts.append("<h3>Risers</h3>")
+    parts.append(f"<h3>Risers ({len(vendors.get('risers') or [])})</h3>")
     parts.append(_vendor_table(vendors.get("risers") or [], "No risers."))
-    parts.append("<h3>Fallers</h3>")
+    parts.append(f"<h3>Fallers ({len(vendors.get('fallers') or [])})</h3>")
     parts.append(_vendor_table(vendors.get("fallers") or [], "No fallers."))
 
     parts.append("<h2>Brand mention rates</h2>")
@@ -1639,6 +1696,7 @@ padding:14px 28px;background:rgba(11,13,16,.9);backdrop-filter:blur(12px);border
 main{max-width:1200px;margin:0 auto;padding:32px 24px 80px}
 h1{font-size:22px;font-weight:620;letter-spacing:-.03em;margin:6px 0 18px}
 h2{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:36px 0 12px}
+h2 .count{margin-left:8px;letter-spacing:0;text-transform:none;color:var(--text);font-size:13px;font-weight:650}
 h3{font-size:14px;margin:18px 0 8px}
 .eyebrow{margin:0;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .hint{color:var(--muted);font-size:13px}
