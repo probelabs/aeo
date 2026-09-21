@@ -1877,57 +1877,14 @@ def render_change_html(payload: dict[str, Any]) -> str:
     parts.append(f"<span class='pill'>{n_rows} matched cells</span>")
     parts.append("</div></header><main>")
 
-    parts.append("<section class='method'>")
-    parts.append("<p class='eyebrow'>Methodology</p>")
-    parts.append("<h1>What this diff measures</h1>")
-    parts.append(
-        "<p>Same roster assumed. Cells match on <code>prompt_id</code> + engine + arm. "
-        "Brand hits are the deterministic <code>brand_mentioned</code> bit. "
-        "Competitor names prefer <code>vendors_judged.json</code> (LLM ∪ regex) and fall back "
-        "to evidence <code>competitor_mentions</code> / <code>vendors_in_search_queries</code>. "
-        "No LLM wrote this page — the numbers are Python.</p>"
-    )
-    parts.append("<div class='method-grid'>")
-    bsrc = (methodology.get("vendor_source") or {}).get("baseline") or baseline.get("vendor_source")
-    csrc = (methodology.get("vendor_source") or {}).get("current") or current.get("vendor_source")
-    parts.append(
-        "<article><h3>Vendor source</h3>"
-        f"<p>Baseline: <b>{_esc(bsrc)}</b>. Current: <b>{_esc(csrc)}</b>. "
-        "A side without <code>vendors_judged</code> cannot list surprises that were never on the seed list.</p></article>"
-    )
-    bo = unmatched.get("baseline_only") or []
-    co = unmatched.get("current_only") or []
-    parts.append(
-        "<article><h3>Unmatched prompt ids</h3>"
-        f"<p>Baseline only: <b>{len(bo)}</b>. Current only: <b>{len(co)}</b>. "
-        "They are listed, not scored in transitions.</p>"
-        + (
-            f"<p class='ex'>{_esc(', '.join(bo[:12] + co[:12]))}</p>"
-            if (bo or co)
-            else "<p class='ex'>None — every prompt_id appears on both sides.</p>"
-        )
-        + "</article>"
-    )
-    parts.append(
-        "<article><h3>Incomplete cells</h3>"
-        f"<p><b>{len(incomplete)}</b> matched prompt×engine×arm pairs are error or missing on one side "
-        "and are excluded from rates and transitions.</p></article>"
-    )
-    floor = methodology.get("floor") or vendors.get("floor") or DEFAULT_FLOOR
-    parts.append(
-        "<article><h3>Floor + Δ</h3>"
-        f"<p>OUT / disappeared when current mentions &lt; <b>{int(floor)}</b> "
-        f"(default 1 = count == 0). NEW when baseline &lt; {int(floor)}. "
-        "Δpp is (current rate − baseline rate) × 100. Vendor Δ is mention count "
-        "(answer + search-box), after normalize. Share is of the competitor field "
-        "(brand share is brand / (brand + field)).</p></article>"
-    )
-    parts.append("</div></section>")
-
     coverage = payload.get("engine_coverage") or methodology.get("engine_coverage") or {}
     skipped = coverage.get("missing_in_current") or []
     added_eng = coverage.get("missing_in_baseline") or []
     comparable = coverage.get("comparable") or vendors.get("compared_engines") or engines
+    floor = methodology.get("floor") or vendors.get("floor") or DEFAULT_FLOOR
+    bsrc = (methodology.get("vendor_source") or {}).get("baseline") or baseline.get("vendor_source")
+    csrc = (methodology.get("vendor_source") or {}).get("current") or current.get("vendor_source")
+
     if skipped or added_eng:
         parts.append("<aside class='gap-banner'>")
         if skipped:
@@ -2000,6 +1957,50 @@ def render_change_html(payload: dict[str, Any]) -> str:
         f"<p class='metric-n'>{int(summary.get('new_count') or 0)}"
         f"<span class='slash'>/</span>{int(summary.get('disappeared_count') or 0)}</p>"
         f"<p class='hint'>names crossing the floor ({int(floor)})</p></article>"
+    )
+    parts.append("</div></section>")
+
+    parts.append("<section class='method'>")
+    parts.append("<p class='eyebrow'>Methodology</p>")
+    parts.append("<h1>What this diff measures</h1>")
+    parts.append(
+        "<p>Same roster assumed. Cells match on <code>prompt_id</code> + engine + arm. "
+        "Brand hits are the deterministic <code>brand_mentioned</code> bit. "
+        "Competitor names prefer <code>vendors_judged.json</code> (LLM ∪ regex) and fall back "
+        "to evidence <code>competitor_mentions</code> / <code>vendors_in_search_queries</code>. "
+        "No LLM wrote this page — the numbers are Python.</p>"
+    )
+    parts.append("<div class='method-grid'>")
+    parts.append(
+        "<article><h3>Vendor source</h3>"
+        f"<p>Baseline: <b>{_esc(bsrc)}</b>. Current: <b>{_esc(csrc)}</b>. "
+        "A side without <code>vendors_judged</code> cannot list surprises that were never on the seed list.</p></article>"
+    )
+    bo = unmatched.get("baseline_only") or []
+    co = unmatched.get("current_only") or []
+    parts.append(
+        "<article><h3>Unmatched prompt ids</h3>"
+        f"<p>Baseline only: <b>{len(bo)}</b>. Current only: <b>{len(co)}</b>. "
+        "They are listed, not scored in transitions.</p>"
+        + (
+            f"<p class='ex'>{_esc(', '.join(bo[:12] + co[:12]))}</p>"
+            if (bo or co)
+            else "<p class='ex'>None — every prompt_id appears on both sides.</p>"
+        )
+        + "</article>"
+    )
+    parts.append(
+        "<article><h3>Incomplete cells</h3>"
+        f"<p><b>{len(incomplete)}</b> matched prompt×engine×arm pairs are error or missing on one side "
+        "and are excluded from rates and transitions.</p></article>"
+    )
+    parts.append(
+        "<article><h3>Floor + Δ</h3>"
+        f"<p>OUT / disappeared when current mentions &lt; <b>{int(floor)}</b> "
+        f"(default 1 = count == 0). NEW when baseline &lt; {int(floor)}. "
+        "Δpp is (current rate − baseline rate) × 100. Vendor Δ is mention count "
+        "(answer + search-box), after normalize. Share is of the competitor field "
+        "(brand share is brand / (brand + field)).</p></article>"
     )
     parts.append("</div></section>")
 
@@ -2295,12 +2296,15 @@ h3{font-size:14px;margin:18px 0 8px}
 .split-banner{margin:0 0 12px;color:var(--wrn);font-size:14px;font-weight:620}
 .exec-split{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:8px 0 16px}
 .exec-split.disagree{gap:14px}
-.split-card{background:#0e1116;border:1px solid var(--line);border-radius:14px;padding:16px 16px 14px}
-.split-card.win{border-color:rgba(110,231,183,.45);box-shadow:inset 0 0 0 1px rgba(110,231,183,.12)}
-.split-card.loss{border-color:rgba(224,122,122,.5);box-shadow:inset 0 0 0 1px rgba(224,122,122,.12)}
+.split-card{background:#0e1116;border:1px solid var(--line);border-radius:14px;padding:16px 16px 14px;
+border-left-width:5px}
+.split-card.win{border-color:rgba(110,231,183,.55);border-left-color:var(--rec);
+background:rgba(110,231,183,.06)}
+.split-card.loss{border-color:rgba(224,122,122,.55);border-left-color:var(--rej);
+background:rgba(224,122,122,.06)}
 .split-card.flat{border-color:var(--line)}
 .exec-split.disagree .split-card{min-height:168px}
-.split-name{margin:8px 0 12px;font-size:26px;font-weight:650;letter-spacing:-.03em}
+.split-name{margin:8px 0 12px;font-size:28px;font-weight:650;letter-spacing:-.03em}
 .split-card.win .split-name{color:var(--rec)}
 .split-card.loss .split-name{color:var(--rej)}
 .split-line{margin:0 0 6px;font-size:13px;font-variant-numeric:tabular-nums}

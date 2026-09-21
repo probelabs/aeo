@@ -842,6 +842,10 @@ class ChangeReportTests(unittest.TestCase):
             html = render_change_html(payload)
             self.assertIn("What this means for Tyk", html)
             self.assertIn('id="what-this-means"', html.replace("'", '"'))
+            self.assertLess(
+                html.lower().find("what this means for tyk"),
+                html.lower().find("what this diff measures"),
+            )
             self.assertIn("Engine split", html)
             self.assertIn("Opposite moves", html)
             self.assertIn("What to do", html)
