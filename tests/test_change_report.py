@@ -151,7 +151,7 @@ class ChangeReportTests(unittest.TestCase):
                     _prompt(
                         "oauth",
                         "claude",
-                        _arm(mentioned=False, comps=["Apigee"]),
+                        _arm(mentioned=False, comps=["Kong"]),
                         _arm(mentioned=True, comps=["Apigee"], searched=True, qvendors=["Apigee"]),
                     ),
                     _prompt(
@@ -336,6 +336,10 @@ class ChangeReportTests(unittest.TestCase):
             # Kong is on both sides after normalize (Kong Gateway ≡ Kong)
             self.assertGreater(names["Kong"]["current"]["mentions"], 0)
             self.assertGreater(names["Kong"]["baseline"]["mentions"], 0)
+            self.assertEqual(names["Kong"]["status"], "riser")
+            self.assertEqual(names["Apigee"]["status"], "faller")
+            self.assertTrue(any(r["name"] == "Kong" for r in payload["competitors"]["risers"]))
+            self.assertTrue(any(r["name"] == "Apigee" for r in payload["competitors"]["fallers"]))
 
     def test_riser_faller_new_disappeared(self):
         with tempfile.TemporaryDirectory() as td:
