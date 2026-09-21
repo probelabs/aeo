@@ -1,7 +1,8 @@
 #!/usr/bin/env python3.11
 """Diff two completed AEO boards: brand Δ, prompt transitions, competitor fan-out.
 
-Writes change.json + *-change-report.html. Deterministic Python; no LLM required.
+Writes change.json + *-change-report.html with a deterministic executive narrative.
+No LLM required.
 """
 from __future__ import annotations
 
@@ -95,6 +96,9 @@ def main(argv: list[str] | None = None) -> int:
     print("wrote", json_path)
     print("wrote", html_path)
     print(payload["summary"]["headline"])
+    verdict = (payload.get("interpretation") or {}).get("verdict")
+    if verdict:
+        print(verdict)
     return 0
 
 

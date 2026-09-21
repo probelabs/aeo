@@ -50,6 +50,13 @@ DEFAULT_TOP_MOVERS = 10
 # HTML / scannable lists. change.json keeps the full NEW/OUT arrays.
 DEFAULT_TOP_LIST = 20
 
+# Search-index hint for practical takeaways (deterministic, not a live lookup).
+ENGINE_SEARCH_HINT = {
+    "claude": "Brave/Claude",
+    "codex": "Bing/Codex",
+    "grok": "Grok",
+}
+
 
 def _esc(s: Any) -> str:
     return html.escape(str(s if s is not None else ""), quote=True)
@@ -315,8 +322,17 @@ def _rate_pair(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
 
 
 def diff_brand_rates(
-    baseline: RunSnapshot, current: RunSnapshot, engines: list[str]
+    baseline: RunSnapshot,
+    current: RunSnapshot,
+    engines: list[str],
+    *,
+    comparable: list[str] | None = None,
 ) -> dict[str, Any]:
+    """Per-engine rates for every listed engine; blended overall uses comparable only.
+
+    When `comparable` is omitted, overall still pools `engines` (legacy). Pass the
+    coverage intersection so a baseline-only engine cannot fake a blended drop.
+    """
     b = brand_rates(baseline, engines)
     c = brand_rates(current, engines)
     by_engine: dict[str, Any] = {}
@@ -337,12 +353,28 @@ def diff_brand_rates(
                 cr.get("search_rate") or {"searched": 0, "n": 0, "rate": None},
             ),
         }
+    pool = list(comparable) if comparable is not None else list(engines)
+    pool_set = set(pool)
+    b_pool = {e: rec for e, rec in b.items() if e in pool_set}
+    c_pool = {e: rec for e, rec in c.items() if e in pool_set}
+    skipped = [e for e in engines if e not in pool_set]
     overall = {
-        "knowledge": _rate_pair(_pool(b, "knowledge"), _pool(c, "knowledge")),
-        "search": _rate_pair(_pool(b, "search"), _pool(c, "search")),
-        "search_rate": _rate_pair(_pool(b, "search_rate"), _pool(c, "search_rate")),
+        "knowledge": _rate_pair(_pool(b_pool, "knowledge"), _pool(c_pool, "knowledge")),
+        "search": _rate_pair(_pool(b_pool, "search"), _pool(c_pool, "search")),
+        "search_rate": _rate_pair(_pool(b_pool, "search_rate"), _pool(c_pool, "search_rate")),
     }
-    return {"engines": by_engine, "overall": overall}
+    return {
+        "engines": by_engine,
+        "overall": overall,
+        "compared_engines": pool,
+        "skipped_engines": skipped,
+        "blend_note": (
+            "Overall / blended rates use engines present on both sides only. "
+            "Per-engine rows still show a skipped engine."
+            if skipped
+            else "Overall rates pool every listed engine (coverage matches)."
+        ),
+    }
 
 
 def _judge_fields(judge: dict[str, Any], key: str) -> dict[str, Any] | None:
@@ -880,6 +912,10 @@ def diff_vendors(
                 "current": _share(c_brand_n, named_c),
                 "delta_pp": _delta_pp(_share(b_brand_n, named_b), _share(c_brand_n, named_c)),
             },
+            "baseline_rank": brand_row.get("baseline_rank"),
+            "current_rank": brand_row.get("current_rank"),
+            "rank_delta": brand_row.get("rank_delta"),
+            "rank_label": brand_row.get("rank_label"),
         },
         "field": {
             "baseline_mentions": field_b,
@@ -889,6 +925,12 @@ def diff_vendors(
             "current_names": sum(1 for r in rows if r["current"]["mentions"] >= floor),
         },
         "leader": {"baseline": _leader("baseline"), "current": _leader("current")},
+        "brand_rank": {
+            "baseline": brand_row.get("baseline_rank"),
+            "current": brand_row.get("current_rank"),
+            "delta": brand_row.get("rank_delta"),
+            "label": brand_row.get("rank_label"),
+        },
     }
 
     return {
@@ -957,6 +999,430 @@ def _new_surprise(vendors: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _title_engine(engine: str) -> str:
+    raw = (engine or "").strip()
+    if not raw:
+        return "engine"
+    return raw[0].upper() + raw[1:]
+
+
+def _join_names(names: list[str]) -> str:
+    if not names:
+        return ""
+    if len(names) == 1:
+        return names[0]
+    if len(names) == 2:
+        return f"{names[0]} and {names[1]}"
+    return f"{', '.join(names[:-1])}, and {names[-1]}"
+
+
+def _moved_pp(delta: float | None) -> str:
+    if delta is None:
+        return "could not be compared"
+    if delta == 0:
+        return "was unchanged"
+    if delta > 0:
+        return f"rose {delta:.1f}pp"
+    return f"fell {abs(delta):.1f}pp"
+
+
+def _mention_clause(delta: int | None) -> str:
+    if delta is None:
+        return "comparable absolute mentions could not be compared"
+    if delta == 0:
+        return "comparable absolute mentions unchanged"
+    adverb = "slightly " if 0 < abs(delta) < 5 else ""
+    direction = "up" if delta > 0 else "down"
+    return f"comparable absolute mentions {adverb}{direction}"
+
+
+def _engine_score(mentions_delta: int, k_delta: float | None, s_delta: float | None) -> float:
+    return mentions_delta * 10.0 + (k_delta or 0.0) + (s_delta or 0.0)
+
+
+def _direction_from_score(score: float) -> str:
+    if score > 1:
+        return "up"
+    if score < -1:
+        return "down"
+    return "flat"
+
+
+def _share_pattern(brand_delta: int, share_delta: float | None) -> str:
+    share_up = share_delta is not None and share_delta > 0
+    share_down = share_delta is not None and share_delta < 0
+    abs_up = brand_delta > 0
+    abs_down = brand_delta < 0
+    if abs_up and share_down:
+        return "absolute_up_share_down"
+    if abs_down and share_up:
+        return "absolute_down_share_up"
+    if abs_up and share_up:
+        return "both_up"
+    if abs_down and share_down:
+        return "both_down"
+    if abs_up:
+        return "absolute_up"
+    if abs_down:
+        return "absolute_down"
+    if share_down:
+        return "share_down"
+    if share_up:
+        return "share_up"
+    return "flat"
+
+
+def _share_note(
+    brand: str,
+    *,
+    brand_b: int,
+    brand_c: int,
+    brand_delta: int,
+    field_b: int,
+    field_c: int,
+    field_delta: int,
+    share_b: float | None,
+    share_c: float | None,
+    share_delta: float | None,
+    pattern: str,
+    field_names_b: int | None = None,
+    field_names_c: int | None = None,
+) -> str:
+    share_bit = (
+        f"share {_share_label(share_b)} → {_share_label(share_c)} "
+        f"({_pp_label(share_delta)})"
+    )
+    if pattern == "absolute_up_share_down":
+        extra = ""
+        if field_names_b is not None and field_names_c is not None and field_names_c > field_names_b:
+            extra = f" Named vendors {field_names_b}→{field_names_c}."
+        return (
+            f"{brand} named cells rose {brand_b}→{brand_c} ({_pp_int(brand_delta)}) while "
+            f"{share_bit} — the vendor field grew ({field_b}→{field_c} mentions, "
+            f"{_pp_int(field_delta)}). Share can fall while the brand rises when the field "
+            f"grows; a share drop ≠ the brand vanishing.{extra}"
+        )
+    if pattern == "absolute_down_share_up":
+        return (
+            f"{brand} named cells fell {brand_b}→{brand_c} ({_pp_int(brand_delta)}) while "
+            f"{share_bit}. Share rose because the field shrank "
+            f"({field_b}→{field_c}, {_pp_int(field_delta)}), not because the brand gained volume."
+        )
+    if pattern == "both_up":
+        return (
+            f"{brand} named cells rose {brand_b}→{brand_c} and {share_bit}. "
+            f"Field {field_b}→{field_c}."
+        )
+    if pattern == "both_down":
+        return (
+            f"{brand} named cells fell {brand_b}→{brand_c} and {share_bit}. "
+            f"Field {field_b}→{field_c}."
+        )
+    return (
+        f"{brand} named cells {brand_b}→{brand_c} ({_pp_int(brand_delta)}); "
+        f"field {field_b}→{field_c} ({_pp_int(field_delta)}); {share_bit}."
+    )
+
+
+def interpret_change(
+    brand: str,
+    rates: dict[str, Any],
+    vendors: dict[str, Any],
+    coverage: dict[str, Any],
+) -> dict[str, Any]:
+    """Deterministic executive narrative from the same stats as the tables. No LLM."""
+    comparable = list(
+        coverage.get("comparable") or rates.get("compared_engines") or []
+    )
+    skipped = list(coverage.get("missing_in_current") or [])
+    added = list(coverage.get("missing_in_baseline") or [])
+    overall = rates.get("overall") or {}
+    by_engine = rates.get("engines") or {}
+    bvf = vendors.get("brand_vs_field") or {}
+    brand_blk = bvf.get("brand") or {}
+    field_blk = bvf.get("field") or {}
+
+    split: list[dict[str, Any]] = []
+    for engine in comparable:
+        rec = by_engine.get(engine) or {}
+        k = rec.get("knowledge") or {}
+        s = rec.get("search") or {}
+        sr = rec.get("search_rate") or {}
+        k_hits_b = int((k.get("baseline") or {}).get("hits") or 0)
+        k_hits_c = int((k.get("current") or {}).get("hits") or 0)
+        s_hits_b = int((s.get("baseline") or {}).get("hits") or 0)
+        s_hits_c = int((s.get("current") or {}).get("hits") or 0)
+        mentions_b = k_hits_b + s_hits_b
+        mentions_c = k_hits_c + s_hits_c
+        mentions_delta = mentions_c - mentions_b
+        k_delta = k.get("delta_pp")
+        s_delta = s.get("delta_pp")
+        score = _engine_score(mentions_delta, k_delta, s_delta)
+        split.append(
+            {
+                "engine": engine,
+                "label": _title_engine(engine),
+                "score": round(score, 2),
+                "direction": _direction_from_score(score),
+                "role": "flat",
+                "knowledge": {
+                    "baseline_rate": (k.get("baseline") or {}).get("rate"),
+                    "current_rate": (k.get("current") or {}).get("rate"),
+                    "delta_pp": k_delta,
+                    "baseline": k.get("baseline") or {},
+                    "current": k.get("current") or {},
+                },
+                "search": {
+                    "baseline_rate": (s.get("baseline") or {}).get("rate"),
+                    "current_rate": (s.get("current") or {}).get("rate"),
+                    "delta_pp": s_delta,
+                    "baseline": s.get("baseline") or {},
+                    "current": s.get("current") or {},
+                },
+                "search_rate": {
+                    "baseline_rate": (sr.get("baseline") or {}).get("rate"),
+                    "current_rate": (sr.get("current") or {}).get("rate"),
+                    "delta_pp": sr.get("delta_pp"),
+                    "baseline": sr.get("baseline") or {},
+                    "current": sr.get("current") or {},
+                },
+                "mentions": {
+                    "baseline": mentions_b,
+                    "current": mentions_c,
+                    "delta": mentions_delta,
+                },
+            }
+        )
+
+    ups = [e for e in split if e["direction"] == "up"]
+    downs = [e for e in split if e["direction"] == "down"]
+    if ups:
+        best_up = max(ups, key=lambda e: e["score"])
+        best_up["role"] = "main_win"
+        for e in ups:
+            if e is not best_up:
+                e["role"] = "win"
+    if downs:
+        worst = min(downs, key=lambda e: e["score"])
+        worst["role"] = "main_loss"
+        for e in downs:
+            if e is not worst:
+                e["role"] = "loss"
+    disagree = bool(ups and downs)
+
+    brand_delta = int(brand_blk.get("delta") or 0)
+    field_delta = int(field_blk.get("delta") or 0)
+    share = brand_blk.get("share") or {}
+    share_delta = share.get("delta_pp")
+    pattern = _share_pattern(brand_delta, share_delta)
+
+    up_labels = [_title_engine(e["engine"]) for e in ups]
+    down_labels = [_title_engine(e["engine"]) for e in downs]
+    if disagree:
+        prefix = "mixed"
+        mid = f"{_join_names(up_labels)} up, {_join_names(down_labels)} down"
+    elif ups and not downs:
+        prefix = "up"
+        mid = f"{_join_names(up_labels)} improved"
+    elif downs and not ups:
+        prefix = "down"
+        mid = f"{_join_names(down_labels)} declined"
+    elif comparable:
+        prefix = "flat"
+        mid = "comparable engines unchanged"
+    else:
+        prefix = "incomplete"
+        mid = "no overlapping engines to compare"
+
+    mention_bit = _mention_clause(brand_delta)
+    if pattern == "absolute_up_share_down":
+        mention_bit += "; share of field fell (field grew)"
+    verdict = f"{prefix}: {mid}; {mention_bit}"
+
+    eng_list = _join_names([_title_engine(e) for e in comparable]) or "no overlapping engines"
+    k_pair = overall.get("knowledge") or {}
+    s_pair = overall.get("search") or {}
+    k_b = (k_pair.get("baseline") or {}).get("rate")
+    k_c = (k_pair.get("current") or {}).get("rate")
+    s_b = (s_pair.get("baseline") or {}).get("rate")
+    s_c = (s_pair.get("current") or {}).get("rate")
+    named_b = int(brand_blk.get("baseline_mentions") or 0)
+    named_c = int(brand_blk.get("current_mentions") or 0)
+    rank_b = brand_blk.get("baseline_rank")
+    rank_c = brand_blk.get("current_rank")
+    if not comparable:
+        comparable_story = (
+            f"No engine appears on both runs, so {brand} rates and rank cannot be compared."
+        )
+    else:
+        comparable_story = (
+            f"On {eng_list} (engines in both runs), {brand} knowledge "
+            f"{_moved_pp(k_pair.get('delta_pp'))} ({_pct_label(k_b)} → {_pct_label(k_c)}), "
+            f"search {_moved_pp(s_pair.get('delta_pp'))} ({_pct_label(s_b)} → {_pct_label(s_c)}). "
+            f"Named cells {named_b}→{named_c}."
+        )
+        if rank_b is not None or rank_c is not None:
+            comparable_story += f" Rank {rank_b or '—'}→{rank_c or '—'}."
+        if disagree:
+            comparable_story += (
+                " Overall looks flat only because engines moved in opposite directions."
+            )
+
+    share_vs_absolute = {
+        "brand_mentions_baseline": named_b,
+        "brand_mentions_current": named_c,
+        "brand_delta": brand_delta,
+        "field_mentions_baseline": int(field_blk.get("baseline_mentions") or 0),
+        "field_mentions_current": int(field_blk.get("current_mentions") or 0),
+        "field_delta": field_delta,
+        "field_names_baseline": int(field_blk.get("baseline_names") or 0),
+        "field_names_current": int(field_blk.get("current_names") or 0),
+        "share_baseline": share.get("baseline"),
+        "share_current": share.get("current"),
+        "share_delta_pp": share_delta,
+        "field_grew": field_delta > 0,
+        "pattern": pattern,
+        "note": _share_note(
+            brand,
+            brand_b=named_b,
+            brand_c=named_c,
+            brand_delta=brand_delta,
+            field_b=int(field_blk.get("baseline_mentions") or 0),
+            field_c=int(field_blk.get("current_mentions") or 0),
+            field_delta=field_delta,
+            share_b=share.get("baseline"),
+            share_c=share.get("current"),
+            share_delta=share_delta,
+            pattern=pattern,
+            field_names_b=int(field_blk.get("baseline_names") or 0),
+            field_names_c=int(field_blk.get("current_names") or 0),
+        ),
+    }
+
+    caveats: list[str] = []
+    if skipped:
+        caveats.append(
+            f"{_join_names([_title_engine(e) for e in skipped])} in baseline only — "
+            f"do not blend that engine into the headline. Prefer comparable-engine rates "
+            f"({eng_list or 'none'}) over a blended figure."
+        )
+    if added:
+        caveats.append(
+            f"{_join_names([_title_engine(e) for e in added])} in current only — "
+            "those cells are shown per-engine, not folded into blended Δ or ranks."
+        )
+    if skipped or added:
+        caveats.append(
+            "Prefer comparable-engine rates over a blended headline when coverage differs."
+        )
+    if not comparable:
+        caveats.append("No overlapping engines; rates and ranks cannot be compared.")
+    src = vendors.get("source") or {}
+    bsrc = src.get("baseline")
+    csrc = src.get("current")
+    if bsrc and csrc and bsrc != csrc:
+        caveats.append(
+            f"Vendor source changed ({bsrc} → {csrc}); field-size jumps can be extract "
+            "coverage, not only more vendors in the answers."
+        )
+    if not caveats:
+        caveats.append(
+            f"Comparable engines: {eng_list or 'none'}. Blended rates use these only."
+        )
+
+    practical: list[str] = []
+
+    def _add(line: str) -> None:
+        if line and line not in practical and len(practical) < 4:
+            practical.append(line)
+
+    if skipped:
+        _add(
+            f"Ignore blended headlines that mix {_join_names([_title_engine(e) for e in skipped])}; "
+            f"read {eng_list or 'overlapping engines'} only."
+        )
+    if disagree:
+        win = next((e for e in split if e["role"] == "main_win"), None)
+        loss = next((e for e in split if e["role"] == "main_loss"), None)
+        if win and loss:
+            w_hint = ENGINE_SEARCH_HINT.get(win["engine"], win["label"])
+            l_hint = ENGINE_SEARCH_HINT.get(loss["engine"], loss["label"])
+            _add(
+                f"Engine split: treat {win['label']} ({w_hint}) and {loss['label']} ({l_hint}) "
+                "as separate fires — overall flat hides opposing moves."
+            )
+    main_loss = next((e for e in split if e["role"] == "main_loss"), None)
+    main_win = next((e for e in split if e["role"] == "main_win"), None)
+    if main_loss:
+        s_delta = main_loss["search"]["delta_pp"]
+        k_delta = main_loss["knowledge"]["delta_pp"]
+        sr_now = main_loss["search_rate"]["current_rate"]
+        label = main_loss["label"]
+        hint = ENGINE_SEARCH_HINT.get(main_loss["engine"], label)
+        if s_delta is not None and s_delta < 0 and sr_now is not None and sr_now >= 0.95:
+            _add(
+                f"Search-arm loss on {label} with {sr_now * 100:.0f}% search_rate → "
+                f"retrieval/citation problem on that engine's index ({hint}), "
+                "not a 'didn't search' miss."
+            )
+        elif s_delta is not None and s_delta < 0:
+            _add(
+                f"Search-arm loss on {label} ({hint}) — treat that index as a separate fire."
+            )
+        elif k_delta is not None and k_delta < 0:
+            _add(
+                f"Knowledge-arm loss on {label} — model prior weakened; "
+                "that is not a retrieval-only fix."
+            )
+    if pattern == "absolute_up_share_down":
+        _add(
+            "Do not treat the share drop as the brand vanishing; absolute mentions rose "
+            "while the field grew."
+        )
+    if main_win:
+        s_delta = main_win["search"]["delta_pp"]
+        k_delta = main_win["knowledge"]["delta_pp"]
+        label = main_win["label"]
+        hint = ENGINE_SEARCH_HINT.get(main_win["engine"], label)
+        if s_delta is not None and s_delta > 0:
+            _add(f"Search-arm gain on {label} — invest in the {hint} retrieval/citation path.")
+        elif k_delta is not None and k_delta > 0:
+            _add(f"Knowledge-arm gain on {label} — keep that prior/training path warm.")
+    rank_now = rank_c if isinstance(rank_c, int) else None
+    rank_was = rank_b if isinstance(rank_b, int) else None
+    if rank_now is not None and rank_now >= 5:
+        was = rank_was if rank_was is not None else "—"
+        _add(
+            f"Don't overread mid-pack rank ({was}→{rank_now}); "
+            "engine-level hit rates are the decision."
+        )
+    surprises = vendors.get("new_surprise") or []
+    if surprises:
+        top = surprises[0]
+        _add(
+            f"New off-seed name {top.get('name')} appeared; check extract coverage vs a real rival."
+        )
+    if added and not comparable:
+        _add("Re-run the same roster on overlapping engines before calling a market move.")
+    if len(practical) < 2 and comparable:
+        _add(
+            f"Re-check {eng_list} cells that flipped miss→hit or hit→miss before changing the plan."
+        )
+    if not practical:
+        _add("No actionable engine split — read the rank table and prompt transitions.")
+
+    return {
+        "verdict": verdict,
+        "comparable_story": comparable_story,
+        "engines_disagree": disagree,
+        "compared_engines": comparable,
+        "engine_split": split,
+        "share_vs_absolute": share_vs_absolute,
+        "caveats": caveats,
+        "practical": practical,
+    }
+
+
 def _headline(
     brand: str,
     rates: dict[str, Any],
@@ -1017,11 +1483,18 @@ def _headline(
     if surprise:
         bits.append(f"New surprise: {surprise['name']} ({surprise['current']}).")
     skipped = coverage.get("missing_in_current") or []
-    if skipped:
-        bits.append(
-            f"Note: {', '.join(skipped)} in baseline only — ranks use "
-            f"{', '.join(coverage.get('comparable') or []) or 'the overlapping engines'}."
-        )
+    added = coverage.get("missing_in_baseline") or []
+    if skipped or added:
+        used = ", ".join(coverage.get("comparable") or []) or "the overlapping engines"
+        if skipped:
+            bits.append(
+                f"Note: {', '.join(skipped)} in baseline only — headline and blended rates "
+                f"use {used}."
+            )
+        if added:
+            bits.append(
+                f"Note: {', '.join(added)} in current only — not folded into blended Δ."
+            )
     elif not mover and not new_n and not out_n:
         bits.append("No competitor movement.")
     return " ".join(bits)
@@ -1047,14 +1520,15 @@ def diff_runs(
         raise ValueError("top_movers must be >= 1")
     engines = _engine_order(baseline.docs, current.docs)
     coverage = engine_coverage(baseline, current)
-    comparable = coverage["comparable"] or engines
-    rates = diff_brand_rates(baseline, current, engines)
+    comparable = coverage["comparable"]
+    rank_engines = comparable or engines
+    rates = diff_brand_rates(baseline, current, engines, comparable=comparable)
     transitions = prompt_transitions(baseline, current, engines)
     vendors = diff_vendors(
         baseline,
         current,
         brand=brand,
-        engines=comparable,
+        engines=rank_engines,
         floor=floor,
         top_n=top_n,
         top_movers=top_movers,
@@ -1063,6 +1537,7 @@ def diff_runs(
     mover = _biggest_mover(vendors)
     surprise = _new_surprise(vendors)
     headline = _headline(brand, rates, vendors, mover, surprise, coverage)
+    interpretation = interpret_change(brand, rates, vendors, coverage)
     bvf = vendors.get("brand_vs_field") or {}
     return {
         "schema_version": SCHEMA_VERSION,
@@ -1085,6 +1560,7 @@ def diff_runs(
         "engine_coverage": coverage,
         "summary": {
             "headline": headline,
+            "verdict": interpretation.get("verdict"),
             "brand_delta_pp": {
                 "knowledge": (rates["overall"]["knowledge"] or {}).get("delta_pp"),
                 "search": (rates["overall"]["search"] or {}).get("delta_pp"),
@@ -1100,6 +1576,7 @@ def diff_runs(
             "disappeared_count": len(vendors.get("disappeared") or []),
             "new_surprise": surprise,
         },
+        "interpretation": interpretation,
         "brand_rates": rates,
         "transitions": transitions,
         "competitors": vendors,
@@ -1123,6 +1600,8 @@ def diff_runs(
                 "Names are merged with aeo.vendors normalize (Kong Gateway ≡ Kong when Kong is seeded).",
                 vendors.get("floor_note") or "",
                 "Competitor ranks use engines present on both sides. A skipped engine (e.g. Grok in baseline only) is labelled — do not read that as a market drop.",
+                "Blended brand rates, headline Δpp, and the executive narrative use comparable engines only. Per-engine rows still show a skipped engine.",
+                "The interpretation / executive block is template + numbers. No LLM wrote it.",
             ],
         },
     }
@@ -1281,6 +1760,94 @@ def _pp_int(n: Any) -> str:
     return f"{sign}{v}"
 
 
+def _rate_arrow(delta: float | None, before: float | None, after: float | None) -> str:
+    return f"{_pct_label(before)} → {_pct_label(after)} ({_pp_label(delta)})"
+
+
+def _render_executive(payload: dict[str, Any]) -> str:
+    brand = payload.get("brand") or "brand"
+    interp = payload.get("interpretation") or {}
+    if not interp:
+        return ""
+    split = list(interp.get("engine_split") or [])
+    disagree = bool(interp.get("engines_disagree"))
+    share = interp.get("share_vs_absolute") or {}
+    parts: list[str] = []
+    parts.append("<section class='executive' id='what-this-means'>")
+    parts.append(f"<p class='eyebrow'>What this means for {_esc(brand)}</p>")
+    parts.append(f"<h1>{_esc(interp.get('verdict') or '')}</h1>")
+    story = interp.get("comparable_story") or ""
+    if story:
+        parts.append(f"<p class='exec-story'>{_esc(story)}</p>")
+    if split:
+        heading = "Engine split" if disagree else "Comparable engines"
+        cls = "exec-split disagree" if disagree else "exec-split"
+        parts.append(f"<h2 class='exec-split-h'>{heading}</h2>")
+        if disagree:
+            parts.append(
+                "<p class='split-banner'>Opposite moves — a blended 'overall' hides this.</p>"
+            )
+        parts.append(f"<div class='{cls}'>")
+        for e in split:
+            role = e.get("role") or "flat"
+            direction = e.get("direction") or "flat"
+            card_cls = "split-card"
+            if role == "main_win" or direction == "up":
+                card_cls += " win"
+            elif role == "main_loss" or direction == "down":
+                card_cls += " loss"
+            else:
+                card_cls += " flat"
+            role_lab = {
+                "main_win": "Main win",
+                "win": "Win",
+                "main_loss": "Main loss",
+                "loss": "Loss",
+                "flat": "Flat",
+            }.get(role, role)
+            k = e.get("knowledge") or {}
+            s = e.get("search") or {}
+            mentions = e.get("mentions") or {}
+            parts.append(f"<article class='{card_cls}'>")
+            parts.append(f"<p class='eyebrow'>{_esc(role_lab)}</p>")
+            parts.append(f"<p class='split-name'>{_esc(e.get('label') or e.get('engine'))}</p>")
+            parts.append(
+                f"<p class='split-line'><span>K</span> "
+                f"{_esc(_rate_arrow(k.get('delta_pp'), k.get('baseline_rate'), k.get('current_rate')))}</p>"
+            )
+            parts.append(
+                f"<p class='split-line'><span>S</span> "
+                f"{_esc(_rate_arrow(s.get('delta_pp'), s.get('baseline_rate'), s.get('current_rate')))}</p>"
+            )
+            parts.append(
+                f"<p class='split-line'><span>Mentions</span> "
+                f"{int(mentions.get('baseline') or 0)}→{int(mentions.get('current') or 0)} "
+                f"({_esc(_pp_int(mentions.get('delta')))})</p>"
+            )
+            parts.append("</article>")
+        parts.append("</div>")
+    note = share.get("note") or ""
+    if note:
+        parts.append(f"<p class='exec-share' id='share-vs-absolute'>{_esc(note)}</p>")
+    practical = list(interp.get("practical") or [])
+    caveats = list(interp.get("caveats") or [])
+    if practical or caveats:
+        parts.append("<div class='exec-cols'>")
+        if practical:
+            parts.append("<article><h3>What to do</h3><ul class='practical'>")
+            for item in practical:
+                parts.append(f"<li>{_esc(item)}</li>")
+            parts.append("</ul></article>")
+        if caveats:
+            parts.append("<article><h3>Caveats</h3><ul class='caveats'>")
+            for item in caveats:
+                parts.append(f"<li>{_esc(item)}</li>")
+            parts.append("</ul></article>")
+        parts.append("</div>")
+    parts.append("</section>")
+    return "\n".join(parts)
+
+
 def render_change_html(payload: dict[str, Any]) -> str:
     brand = payload.get("brand") or "brand"
     baseline = payload.get("baseline") or {}
@@ -1373,9 +1940,16 @@ def render_change_html(payload: dict[str, Any]) -> str:
         if added_eng:
             parts.append(
                 f"<p>Current also has <b>{_esc(', '.join(added_eng))}</b> which baseline lacked. "
-                "Those cells are in brand rates, not in competitor ranks.</p>"
+                "Those cells are shown per-engine, not folded into blended brand Δ or ranks.</p>"
+            )
+        if skipped:
+            parts.append(
+                "<p>Blended brand Δ, the headline, and the executive narrative use only "
+                f"<b>{_esc(', '.join(comparable) or 'overlapping engines')}</b>.</p>"
             )
         parts.append("</aside>")
+
+    parts.append(_render_executive(payload))
 
     parts.append("<section class='actions'>")
     parts.append("<p class='eyebrow'>Summary</p>")
@@ -1383,8 +1957,8 @@ def render_change_html(payload: dict[str, Any]) -> str:
     parts.append("<div class='hero'>")
     bd = summary.get("brand_delta_pp") or {}
     for lab, key, hint in (
-        ("Brand Δ (S)", "search", "search-arm mention, all engines"),
-        ("Brand Δ (K)", "knowledge", "knowledge-arm mention, all engines"),
+        ("Brand Δ (S)", "search", "search-arm mention, comparable engines"),
+        ("Brand Δ (K)", "knowledge", "knowledge-arm mention, comparable engines"),
         ("Search-rate Δ", "search_rate", "share of search arms that actually searched"),
     ):
         delta = bd.get(key)
@@ -1566,9 +2140,20 @@ def render_change_html(payload: dict[str, Any]) -> str:
     parts.append(_vendor_table(vendors.get("fallers") or [], "No fallers."))
 
     parts.append("<h2>Brand mention rates</h2>")
+    skipped_rates = rates.get("skipped_engines") or []
+    compared_rates = rates.get("compared_engines") or comparable
+    blend_note = rates.get("blend_note") or ""
     parts.append(
-        "<p class='hint'>Absolute rates plus Δpp per engine × arm. Search rate is the share of "
-        "completed search arms that fired a search tool.</p>"
+        "<p class='hint'>Absolute rates plus Δpp per engine × arm. The <b>all</b> row pools "
+        f"comparable engines only ({_esc(', '.join(compared_rates) or 'none')}). "
+        "Search rate is the share of completed search arms that fired a search tool."
+        + (
+            f" Skipped from the blend: {_esc(', '.join(skipped_rates))}."
+            if skipped_rates
+            else ""
+        )
+        + (f" {_esc(blend_note)}" if blend_note else "")
+        + "</p>"
     )
     parts.append("<div class='table-wrap'><table class='data'><thead><tr>")
     parts.append(
@@ -1702,6 +2287,29 @@ h3{font-size:14px;margin:18px 0 8px}
 .hint{color:var(--muted);font-size:13px}
 .muted{color:var(--muted)}
 .actions{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 24px;margin-bottom:22px}
+.executive{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 24px;margin-bottom:22px}
+.executive h1{font-size:24px;margin:8px 0 14px;max-width:70ch}
+.exec-story{color:var(--text);font-size:15px;max-width:78ch;margin:0 0 16px;line-height:1.5}
+.exec-share{color:var(--muted);font-size:14px;max-width:78ch;margin:12px 0 16px;line-height:1.5}
+.exec-split-h{margin:8px 0 8px;font-size:13px;letter-spacing:.12em}
+.split-banner{margin:0 0 12px;color:var(--wrn);font-size:14px;font-weight:620}
+.exec-split{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:8px 0 16px}
+.exec-split.disagree{gap:14px}
+.split-card{background:#0e1116;border:1px solid var(--line);border-radius:14px;padding:16px 16px 14px}
+.split-card.win{border-color:rgba(110,231,183,.45);box-shadow:inset 0 0 0 1px rgba(110,231,183,.12)}
+.split-card.loss{border-color:rgba(224,122,122,.5);box-shadow:inset 0 0 0 1px rgba(224,122,122,.12)}
+.split-card.flat{border-color:var(--line)}
+.exec-split.disagree .split-card{min-height:168px}
+.split-name{margin:8px 0 12px;font-size:26px;font-weight:650;letter-spacing:-.03em}
+.split-card.win .split-name{color:var(--rec)}
+.split-card.loss .split-name{color:var(--rej)}
+.split-line{margin:0 0 6px;font-size:13px;font-variant-numeric:tabular-nums}
+.split-line span{display:inline-block;min-width:72px;color:var(--muted);font-size:11px;
+letter-spacing:.08em;text-transform:uppercase}
+.exec-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:8px}
+.exec-cols h3{margin:0 0 8px;font-size:14px}
+.exec-cols ul{margin:0;padding-left:18px}
+.exec-cols li{margin:0 0 8px;font-size:14px;color:var(--text)}
 .hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
 .hero.slim{margin:8px 0 16px}
 .metric{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;min-height:110px;display:flex;flex-direction:column}

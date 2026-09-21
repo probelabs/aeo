@@ -145,7 +145,7 @@ python3 -m aeo run --config aeo.config.json --class focus --engine all --arm bot
    - Same-backend check: run that engine's search arm (or the raw WebSearch invocation in METHODOLOGY.md — never `--bare`) with the **literal** fan-out string. Inspect tool results / cited URLs for your canonical. A Bing or Brave "fetched" receipt is **not** this check. If the URL is not in that backend, the next action is index and wait, not a new draft.
    - Full decision tree (live vs clone vs not-indexed vs skipped): §11.
 
-7. After two completed boards on the same roster, run `scripts/change_report.py` (brand mention Δpp, prompt-level miss→hit / hit→miss, competitor risers/fallers/new/surprises). Do not compare the two HTML reports by hand. Every cycle: did any watch leave the trap? Did a focus cell move miss → mention, or mention → a cited URL you own? The board will not extract citations; read `raw_response_text`.
+7. After two completed boards on the same roster, run `scripts/change_report.py` (executive narrative, brand mention Δpp, prompt-level miss→hit / hit→miss, competitor risers/fallers/new/surprises). Do not compare the two HTML reports by hand. Every cycle: did any watch leave the trap? Did a focus cell move miss → mention, or mention → a cited URL you own? The board will not extract citations; read `raw_response_text`.
 
 8. Never invent checkmarks. Recompute the board from evidence.
 
@@ -387,7 +387,7 @@ When asked to summarize a run for humans (PR comment, report, memo), the artifac
 
 If any of those is missing, the write-up is not done.
 
-Human view of the same payload: `python3 -m aeo board <evidence.json>` (markdown + agent JSON; `--format html` writes the standalone report) plus the evidence JSON. Merge several engine files with `python3 -m aeo report --html --out report.html run-a.json run-b.json`. After two completed boards on the same roster, include the `scripts/change_report.py` artifact (brand Δ, prompt transitions, competitor movers) — see §12.
+Human view of the same payload: `python3 -m aeo board <evidence.json>` (markdown + agent JSON; `--format html` writes the standalone report) plus the evidence JSON. Merge several engine files with `python3 -m aeo report --html --out report.html run-a.json run-b.json`. After two completed boards on the same roster, include the `scripts/change_report.py` artifact (executive narrative, brand Δ, prompt transitions, competitor movers) — see §12.
 
 
 ---

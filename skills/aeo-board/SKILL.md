@@ -43,4 +43,4 @@ A human run write-up is not the board itself. It must follow [PLAYBOOK.md](../..
 
 After the board, the post-run judge (`scripts/judge_run.py`) can extract vendors from every completed arm — including misses that only name an unlisted product (a **surprise**, vs the config seed list) — then `scripts/render_judge_html.py`. See [PLAYBOOK.md](../../PLAYBOOK.md) §12.
 
-After a **second** run of the same roster, `scripts/change_report.py --baseline <run_N-1> --current <run_N> --brand <Brand>` is the progress report (brand Δ, prompt transitions, competitor movers). Do not compare two boards by hand. See [PLAYBOOK.md](../../PLAYBOOK.md) §12.
+After a **second** run of the same roster, `scripts/change_report.py --baseline <run_N-1> --current <run_N> --brand <Brand>` is the progress report (executive narrative, brand Δ, prompt transitions, competitor movers). Do not compare two boards by hand. See [PLAYBOOK.md](../../PLAYBOOK.md) §12.

@@ -681,6 +681,177 @@ class ChangeReportTests(unittest.TestCase):
             self.assertLessEqual(len(dumped["competitors"]["risers"]), 1)
             self.assertLessEqual(len(dumped["competitors"]["fallers"]), 1)
 
+    def _split_pair(self, tmp: Path) -> tuple[Path, Path]:
+        """Claude↑ Codex↓, absolute mentions up, field explodes, Grok baseline-only."""
+        hypers = ["AWS", "Azure", "Google", "Cloudflare", "IBM"]
+        seeds = ["Kong", "Apigee", *hypers]
+
+        def _prompts(engine: str, hits: list[tuple[bool, bool]], comps: list[str]) -> list[dict]:
+            out = []
+            for i, (k_hit, s_hit) in enumerate(hits, start=1):
+                pid = f"q{i}"
+                out.append(
+                    _prompt(
+                        pid,
+                        engine,
+                        _arm(mentioned=k_hit, comps=comps),
+                        _arm(
+                            mentioned=s_hit,
+                            comps=comps,
+                            searched=True,
+                            qvendors=comps[:2],
+                        ),
+                    )
+                )
+            return out
+
+        # Claude 1/6 → 6/6; Codex 6/6 → 2/6; comparable brand 7→8.
+        baseline = _write_run(
+            tmp,
+            name="b",
+            competitors=seeds,
+            prompts_by_engine={
+                "claude": _prompts(
+                    "claude",
+                    [(False, False), (False, False), (False, True)],
+                    ["Kong", "Apigee"],
+                ),
+                "codex": _prompts(
+                    "codex",
+                    [(True, True), (True, True), (True, True)],
+                    ["Kong", "Apigee"],
+                ),
+                "grok": _prompts(
+                    "grok",
+                    [(True, True), (True, True), (True, True)],
+                    ["Apigee"],
+                ),
+            },
+        )
+        current = _write_run(
+            tmp,
+            name="c",
+            competitors=seeds,
+            prompts_by_engine={
+                "claude": _prompts(
+                    "claude",
+                    [(True, True), (True, True), (True, True)],
+                    ["Kong", *hypers],
+                ),
+                "codex": _prompts(
+                    "codex",
+                    [(False, False), (False, False), (True, True)],
+                    ["Kong", *hypers],
+                ),
+            },
+        )
+        return baseline, current
+
+    def test_interpretation_engine_split_claude_up_codex_down(self):
+        with tempfile.TemporaryDirectory() as td:
+            baseline, current = self._split_pair(Path(td))
+            payload = diff_runs(load_run(baseline), load_run(current), brand="Tyk")
+            interp = payload["interpretation"]
+            self.assertTrue(interp["engines_disagree"])
+            by = {e["engine"]: e for e in interp["engine_split"]}
+            self.assertEqual(set(by), {"claude", "codex"})
+            self.assertEqual(by["claude"]["direction"], "up")
+            self.assertEqual(by["codex"]["direction"], "down")
+            self.assertEqual(by["claude"]["role"], "main_win")
+            self.assertEqual(by["codex"]["role"], "main_loss")
+            self.assertGreater(by["claude"]["mentions"]["delta"], 0)
+            self.assertLess(by["codex"]["mentions"]["delta"], 0)
+            verdict = interp["verdict"].lower()
+            self.assertIn("mixed", verdict)
+            self.assertIn("claude", verdict)
+            self.assertIn("codex", verdict)
+            story = interp["comparable_story"].lower()
+            self.assertIn("claude", story)
+            self.assertIn("codex", story)
+            self.assertTrue(
+                any("separate fire" in p.lower() for p in interp["practical"])
+            )
+
+    def test_share_down_absolute_up_wording(self):
+        with tempfile.TemporaryDirectory() as td:
+            baseline, current = self._split_pair(Path(td))
+            payload = diff_runs(load_run(baseline), load_run(current), brand="Tyk")
+            share = payload["interpretation"]["share_vs_absolute"]
+            self.assertGreater(share["brand_delta"], 0)
+            self.assertGreater(share["field_delta"], 0)
+            self.assertLess(share["share_delta_pp"], 0)
+            self.assertEqual(share["pattern"], "absolute_up_share_down")
+            note = share["note"].lower()
+            self.assertIn("field", note)
+            self.assertIn("grew", note)
+            self.assertIn("vanishing", note)
+            self.assertIn("rose", note)
+
+    def test_blended_rates_exclude_skipped_grok(self):
+        with tempfile.TemporaryDirectory() as td:
+            baseline, current = self._split_pair(Path(td))
+            payload = diff_runs(load_run(baseline), load_run(current), brand="Tyk")
+            rates = payload["brand_rates"]
+            self.assertEqual(rates["compared_engines"], ["claude", "codex"])
+            self.assertEqual(rates["skipped_engines"], ["grok"])
+            self.assertIn("grok", payload["engine_coverage"]["missing_in_current"])
+
+            overall_s = rates["overall"]["search"]
+            claude_s = rates["engines"]["claude"]["search"]
+            codex_s = rates["engines"]["codex"]["search"]
+            grok_s = rates["engines"]["grok"]["search"]
+            self.assertGreater(grok_s["baseline"]["n"], 0)
+            self.assertEqual(grok_s["current"]["n"], 0)
+            self.assertEqual(
+                overall_s["baseline"]["n"],
+                claude_s["baseline"]["n"] + codex_s["baseline"]["n"],
+            )
+            self.assertEqual(
+                overall_s["current"]["n"],
+                claude_s["current"]["n"] + codex_s["current"]["n"],
+            )
+            blended_if_grok = (
+                claude_s["baseline"]["n"] + codex_s["baseline"]["n"] + grok_s["baseline"]["n"]
+            )
+            self.assertNotEqual(overall_s["baseline"]["n"], blended_if_grok)
+            self.assertEqual(
+                payload["summary"]["brand_delta_pp"]["search"],
+                overall_s["delta_pp"],
+            )
+            # Fake blend would pull search down (Grok was 100% in baseline only).
+            fake_b_hits = (
+                claude_s["baseline"]["hits"]
+                + codex_s["baseline"]["hits"]
+                + grok_s["baseline"]["hits"]
+            )
+            fake_b_n = blended_if_grok
+            fake_c_hits = claude_s["current"]["hits"] + codex_s["current"]["hits"]
+            fake_c_n = claude_s["current"]["n"] + codex_s["current"]["n"]
+            fake_delta = round((fake_c_hits / fake_c_n - fake_b_hits / fake_b_n) * 100.0, 2)
+            self.assertNotEqual(overall_s["delta_pp"], fake_delta)
+            caveats = " ".join(payload["interpretation"]["caveats"]).lower()
+            self.assertIn("grok", caveats)
+            headline = payload["summary"]["headline"].lower()
+            self.assertIn("grok", headline)
+            self.assertIn("blended", headline)
+
+    def test_html_contains_executive_section(self):
+        with tempfile.TemporaryDirectory() as td:
+            baseline, current = self._split_pair(Path(td))
+            payload = diff_runs(load_run(baseline), load_run(current), brand="Tyk")
+            html = render_change_html(payload)
+            self.assertIn("What this means for Tyk", html)
+            self.assertIn('id="what-this-means"', html.replace("'", '"'))
+            self.assertIn("Engine split", html)
+            self.assertIn("Opposite moves", html)
+            self.assertIn("What to do", html)
+            self.assertIn("Caveats", html)
+            self.assertIn("share-vs-absolute", html)
+            self.assertIn(payload["interpretation"]["verdict"], html)
+            self.assertIn("Claude", html)
+            self.assertIn("Codex", html)
+            self.assertIn("comparable engines", html.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
