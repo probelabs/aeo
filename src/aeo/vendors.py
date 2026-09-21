@@ -5,6 +5,11 @@ not a ceiling: names discovered in a post-run LLM pass still count. A hit
 whose normalized key is not in that seed set is a **surprise** — flagged,
 not quietly merged into the known pile.
 
+Synonym groups collapse duplicate seeds: Amazon/AWS API Gateway → **Amazon API
+Gateway**, Azure APIM / Azure API Management → **Azure API Management**, Apache
+APISIX / APISIX → **Apache APISIX**. Config may also set `competitor_aliases`
+(`canonical → [spellings]`). Duplicate seeds still collapse without that map.
+
 Brand mention scoring stays in `aeo.mention` (deterministic regex). This
 module is only for competitor / vendor fan-out after a run.
 """
@@ -48,6 +53,36 @@ _SEP_RE = re.compile(r"[\s._+-]+")
 # "Kong Gateway" / "Tyk API" collapse onto the product token when already known.
 _GENERIC_TAILS = frozenset(
     {"gateway", "api", "platform", "service", "cloud", "hq", "app", "io"}
+)
+
+# House-name prefixes that mean the same vendor when the rest of the product matches.
+# Applied on the first token (and as a leading key prefix when the house is unambiguous).
+HOUSE_SYNONYMS = (
+    frozenset({"aws", "amazon", "amazonwebservices"}),
+    frozenset({"gcp", "googlecloud"}),
+    frozenset({"apache"}),
+)
+
+# Product-phrase abbreviations seen in seeds / extract (api management ↔ apim).
+PRODUCT_ABBREVS = (("api management", "apim"),)
+
+# Preferred display + extra phrases. Duplicate seeds still collapse via synonym_keys
+# even when this table is not consulted for a name.
+# Canonical picks (documented): Amazon API Gateway (AWS product title), Azure API
+# Management (not "Azure APIM"), Apache APISIX (not bare APISIX).
+VENDOR_SYNONYM_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "Amazon API Gateway",
+        ("aws api gateway", "amazon api gateway", "aws api gw", "amazon api gw"),
+    ),
+    (
+        "Azure API Management",
+        ("azure api management", "azure apim"),
+    ),
+    (
+        "Apache APISIX",
+        ("apache apisix", "apisix"),
+    ),
 )
 
 
@@ -116,6 +151,111 @@ def preferred_display(raw: str, *alts: str) -> str:
     return best
 
 
+def _vendor_tokens(raw: str) -> list[str]:
+    stripped = pretty_strip(raw).lower()
+    if not stripped:
+        return []
+    stripped = stripped.replace("&", " and ")
+    stripped = _PUNCT_RE.sub(" ", stripped)
+    return [t for t in _SEP_RE.split(stripped) if t]
+
+
+def _house_key_variants(key: str) -> set[str]:
+    """Swap a leading house prefix (aws/amazon/…) on an already-flattened key."""
+    out = {key}
+    if not key:
+        return out
+    for group in HOUSE_SYNONYMS:
+        for house in group:
+            if len(house) < 3 or not key.startswith(house) or len(key) <= len(house):
+                continue
+            rest = key[len(house) :]
+            if len(rest) < 5:
+                continue
+            out.add(rest)
+            for syn in group:
+                out.add(syn + rest)
+    return out
+
+
+def synonym_keys(raw: str, normalized: str | None = None) -> set[str]:
+    """All merge keys that should count as the same vendor as `raw`."""
+    keys: set[str] = set()
+    for item in (raw, normalized):
+        if not (item or "").strip():
+            continue
+        keys.add(normalize_vendor_key(item))
+        tokens = _vendor_tokens(item)
+        if not tokens:
+            continue
+        for group in HOUSE_SYNONYMS:
+            if tokens[0] not in group:
+                continue
+            for syn in group:
+                keys.add(normalize_vendor_key(" ".join([syn, *tokens[1:]])))
+            if len(tokens) >= 2:
+                rest = normalize_vendor_key(" ".join(tokens[1:]))
+                if len(rest) >= 5:
+                    keys.add(rest)
+        phrase = " ".join(tokens)
+        for long, short in PRODUCT_ABBREVS:
+            if long in phrase:
+                keys.add(normalize_vendor_key(phrase.replace(long, short)))
+            if re.search(rf"\b{re.escape(short)}\b", phrase):
+                keys.add(normalize_vendor_key(phrase.replace(short, long)))
+    extra: set[str] = set()
+    for key in keys:
+        extra |= _house_key_variants(key)
+    keys |= extra
+    return {k for k in keys if k}
+
+
+def _builtin_canonical_display(keys: set[str]) -> str | None:
+    for display, aliases in VENDOR_SYNONYM_GROUPS:
+        group_keys = set()
+        for phrase in (display, *aliases):
+            group_keys |= synonym_keys(phrase)
+        if keys & group_keys:
+            return display
+    return None
+
+
+def expand_competitor_mention_terms(
+    competitors: Iterable[str],
+    competitor_aliases: dict[str, list[str]] | None = None,
+) -> list[str]:
+    """Competitors plus synonym/alias phrases so regex still hits both spellings."""
+    terms: list[str] = []
+    seen: set[str] = set()
+
+    def add(term: str) -> None:
+        raw = (term or "").strip()
+        if not raw:
+            return
+        fold = raw.lower()
+        if fold in seen:
+            return
+        seen.add(fold)
+        terms.append(raw)
+
+    for name in competitors or []:
+        add(str(name))
+        nkeys = synonym_keys(str(name))
+        for display, aliases in VENDOR_SYNONYM_GROUPS:
+            group_keys: set[str] = set()
+            for phrase in (display, *aliases):
+                group_keys |= synonym_keys(phrase)
+            if nkeys & group_keys:
+                add(display)
+                for a in aliases:
+                    add(a)
+    for canon, aliases in (competitor_aliases or {}).items():
+        add(str(canon))
+        for a in aliases or []:
+            add(str(a))
+    return terms
+
+
 def brand_keys(brand: str, aliases: Iterable[str]) -> set[str]:
     keys: set[str] = set()
     for term in unique_terms([brand, *aliases]):
@@ -150,18 +290,36 @@ def is_brand_vendor(name: str, brand: str, aliases: Iterable[str]) -> bool:
 
 
 class AliasMap:
-    """key -> display. Seeded from config, then grown from a run."""
+    """key -> display. Seeded from config, then grown from a run.
+
+    Synonym groups (aws/amazon, azure apim/management, config competitor_aliases)
+    share one canonical key so duplicate seeds do not rank as two vendors.
+    """
 
     def __init__(self) -> None:
         self._display: dict[str, str] = {}
+        self._alias_to: dict[str, str] = {}
         self._seed_keys: set[str] = set()
         self.brand: str = ""
         self.aliases: list[str] = []
 
-    def seed(self, brand: str, aliases: Iterable[str], competitors: Iterable[str]) -> None:
+    def seed(
+        self,
+        brand: str,
+        aliases: Iterable[str],
+        competitors: Iterable[str],
+        competitor_aliases: dict[str, list[str]] | None = None,
+    ) -> None:
         self.brand = brand or ""
         self.aliases = [str(a) for a in aliases if a]
         self._seed_keys = set()
+        groups: list[tuple[str, list[str]]] = [
+            (display, list(extra)) for display, extra in VENDOR_SYNONYM_GROUPS
+        ]
+        for canon, extra in (competitor_aliases or {}).items():
+            groups.append((str(canon), [str(a) for a in extra or []]))
+        for display, extra in groups:
+            self._register_group(display, extra)
         for term in unique_terms([brand, *self.aliases]):
             self.observe(term)
         for term in unique_terms(competitors):
@@ -169,64 +327,124 @@ class AliasMap:
             key = self._seed_key_for(term)
             if key:
                 self._seed_keys.add(key)
+        for canon, extra in (competitor_aliases or {}).items():
+            for term in (canon, *[a for a in extra or [] if a]):
+                self.observe(term)
+                key = self.key_for(term)
+                if key:
+                    self._seed_keys.add(key)
+
+    def _register_group(self, display: str, aliases: Iterable[str]) -> None:
+        phrases = [display, *[a for a in aliases if a]]
+        keys: set[str] = set()
+        for phrase in phrases:
+            keys |= synonym_keys(phrase)
+        if not keys:
+            return
+        canon = normalize_vendor_key(display) or next(iter(sorted(keys)))
+        for key in keys:
+            self._alias_to[key] = canon
+        if canon not in self._display:
+            self._display[canon] = display.strip() or preferred_display(display)
+
+    def _bind_synonyms(self, raw: str, normalized: str | None, canon: str) -> None:
+        for key in synonym_keys(raw, normalized) | {canon}:
+            if key:
+                self._alias_to[key] = canon
 
     def _seed_key_for(self, raw: str, normalized: str | None = None) -> str:
         """Canonical key against the seed set only (not run-grown aliases)."""
-        key = normalize_vendor_key(normalized or raw)
+        key = self.key_for(raw, normalized)
         if not key:
             return ""
         if key in self._seed_keys:
             return key
+        raw_key = normalize_vendor_key(normalized or raw)
         for seed in sorted(self._seed_keys, key=len, reverse=True):
-            if key.startswith(seed) and key[len(seed) :] in _GENERIC_TAILS:
+            if raw_key.startswith(seed) and raw_key[len(seed) :] in _GENERIC_TAILS:
                 return seed
-            if seed.startswith(key) and seed[len(key) :] in _GENERIC_TAILS:
+            if seed.startswith(raw_key) and seed[len(raw_key) :] in _GENERIC_TAILS:
                 return seed
         return key
 
     def is_seed(self, raw: str, normalized: str | None = None) -> bool:
-        key = normalize_vendor_key(normalized or raw)
+        key = self.key_for(raw, normalized)
         if not key:
             return False
         return self._seed_key_for(raw, normalized) in self._seed_keys
 
     def key_for(self, raw: str, normalized: str | None = None) -> str:
-        return self._canonical_key(normalize_vendor_key(normalized or raw))
+        raw_key = normalize_vendor_key(normalized or raw)
+        if not raw_key:
+            return ""
+        for variant in (raw_key, *sorted(synonym_keys(raw, normalized))):
+            mapped = self._alias_to.get(variant)
+            if mapped:
+                return mapped
+        return self._canonical_key(raw_key)
 
     def _canonical_key(self, key: str) -> str:
         if not key:
             return ""
+        key = self._alias_to.get(key, key)
         if key in self._display:
-            return key
-        for known in sorted(self._display, key=len, reverse=True):
+            return self._alias_to.get(key, key)
+        pool = set(self._display) | set(self._alias_to.values())
+        for known in sorted(pool, key=len, reverse=True):
             if not known:
                 continue
             if key.startswith(known) and key[len(known) :] in _GENERIC_TAILS:
-                return known
+                return self._alias_to.get(known, known)
             if known.startswith(key) and known[len(key) :] in _GENERIC_TAILS:
-                return known
-        return key
+                return self._alias_to.get(known, known)
+        return self._alias_to.get(key, key)
 
     def observe(self, raw: str, normalized: str | None = None) -> str:
         """Record a sighting and return the current display name (empty if unusable)."""
-        key = self._canonical_key(normalize_vendor_key(normalized or raw))
-        if not key:
+        variants = synonym_keys(raw, normalized)
+        raw_key = normalize_vendor_key(normalized or raw)
+        if raw_key:
+            variants.add(raw_key)
+        if not variants:
             return ""
+        canon = ""
+        for variant in variants:
+            mapped = self._alias_to.get(variant)
+            if mapped:
+                canon = mapped
+                break
+            if variant in self._display:
+                canon = variant
+                break
+        if not canon:
+            builtin = _builtin_canonical_display(variants)
+            if builtin:
+                canon = normalize_vendor_key(builtin)
+                if canon not in self._display:
+                    self._display[canon] = builtin
+            else:
+                canon = self._canonical_key(raw_key) or raw_key
+        self._bind_synonyms(raw, normalized, canon)
         candidate = preferred_display(raw, normalized or "")
+        if _builtin_canonical_display(variants):
+            # Built-in table wins display so AWS/Amazon always show as Amazon API Gateway.
+            locked = _builtin_canonical_display(variants)
+            if locked:
+                self._display[canon] = locked
+                return locked
         if not candidate:
-            return self._display.get(key, "")
-        prev = self._display.get(key)
-        # Keep the canonical short form (Kong) over a generic-tail variant (Kong Gateway).
+            return self._display.get(canon, "")
+        prev = self._display.get(canon)
         if prev is None:
-            self._display[key] = candidate
-        elif normalize_vendor_key(prev) == key and normalize_vendor_key(candidate) != key:
+            self._display[canon] = candidate
+        elif normalize_vendor_key(prev) == canon and normalize_vendor_key(candidate) != canon:
             pass
         elif display_score(candidate) > display_score(prev):
-            self._display[key] = candidate
-        return self._display[key]
+            self._display[canon] = candidate
+        return self._display[canon]
 
     def display_for(self, raw: str, normalized: str | None = None) -> str:
-        key = self._canonical_key(normalize_vendor_key(normalized or raw))
+        key = self.key_for(raw, normalized)
         if not key:
             return (normalized or raw or "").strip()
         if key in self._display:
@@ -314,10 +532,13 @@ def load_vendor_store(raw: Any) -> dict[str, dict[str, Any]]:
     return out
 
 
-def workspace_from_docs(docs: dict[str, dict[str, Any]]) -> tuple[str, list[str], list[str]]:
+def workspace_from_docs(
+    docs: dict[str, dict[str, Any]],
+) -> tuple[str, list[str], list[str], dict[str, list[str]]]:
     brand = ""
     aliases: list[str] = []
     competitors: list[str] = []
+    competitor_aliases: dict[str, list[str]] = {}
     for doc in docs.values():
         if not isinstance(doc, dict):
             continue
@@ -330,7 +551,14 @@ def workspace_from_docs(docs: dict[str, dict[str, Any]]) -> tuple[str, list[str]
         for c in ws.get("competitors") or []:
             if c and str(c) not in competitors:
                 competitors.append(str(c))
-    return brand, aliases, competitors
+        raw_aliases = ws.get("competitor_aliases") or {}
+        if isinstance(raw_aliases, dict):
+            for canon, extra in raw_aliases.items():
+                slot = competitor_aliases.setdefault(str(canon), [])
+                for item in extra or []:
+                    if item and str(item) not in slot:
+                        slot.append(str(item))
+    return brand, aliases, competitors, competitor_aliases
 
 
 def seed_alias_map(
@@ -338,9 +566,10 @@ def seed_alias_map(
     aliases: Iterable[str],
     competitors: Iterable[str],
     cells: Iterable[dict[str, Any]] | None = None,
+    competitor_aliases: dict[str, list[str]] | None = None,
 ) -> AliasMap:
     amap = AliasMap()
-    amap.seed(brand, aliases, competitors)
+    amap.seed(brand, aliases, competitors, competitor_aliases=competitor_aliases)
     if cells:
         amap.grow_from_cells(cells)
     return amap
@@ -625,10 +854,13 @@ def surprise_frequencies(
     brand: str,
     aliases: Iterable[str],
     competitors: Iterable[str],
+    competitor_aliases: dict[str, list[str]] | None = None,
 ) -> list[tuple[str, int]]:
     """High-frequency surprises across a run, for the board judge."""
     store = load_vendor_store(vendor_store)
-    amap = seed_alias_map(brand, aliases, competitors, store.values())
+    amap = seed_alias_map(
+        brand, aliases, competitors, store.values(), competitor_aliases=competitor_aliases
+    )
     counts: Counter[str] = Counter()
     for engine, doc in docs.items():
         if not isinstance(doc, dict):

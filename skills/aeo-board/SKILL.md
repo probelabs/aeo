@@ -42,3 +42,5 @@ Full rules: [METHODOLOGY.md](../../METHODOLOGY.md). Measurement skill: [aeo](../
 A human run write-up is not the board itself. It must follow [PLAYBOOK.md](../../PLAYBOOK.md) §10 (method, live URL check, per-engine×arm table, confirmation vs discovery, search-blind seeds, cannibalize map, waves, refuse list, `--only-id` re-run). After a zero-mention grid, reason with §9 before drafting. `--format html` is a view of the **board**, not a substitute for that artifact. Merge engine files with `python3 -m aeo report --html --out report.html a.json b.json`.
 
 After the board, the post-run judge (`scripts/judge_run.py`) can extract vendors from every completed arm — including misses that only name an unlisted product (a **surprise**, vs the config seed list) — then `scripts/render_judge_html.py`. See [PLAYBOOK.md](../../PLAYBOOK.md) §12.
+
+After a **second** run of the same roster, `scripts/change_report.py --baseline <run_N-1> --current <run_N> --brand <Brand>` is the progress report (executive narrative, brand Δ, prompt transitions, competitor movers). Do not compare two boards by hand. See [PLAYBOOK.md](../../PLAYBOOK.md) §12.

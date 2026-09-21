@@ -41,6 +41,7 @@ class Config:
     domain: str
     aliases: list[str] = field(default_factory=list)
     competitors: list[str] = field(default_factory=list)
+    competitor_aliases: dict[str, list[str]] = field(default_factory=dict)
     engines: list[str] = field(default_factory=lambda: list(ENGINES))
     prompts: list[Prompt] = field(default_factory=list)
     cli: dict[str, str] = field(default_factory=dict)
@@ -63,9 +64,27 @@ class Config:
             "data_dir": self.data_dir,
             "samples_per_arm": self.samples_per_arm,
         }
+        if self.competitor_aliases:
+            out["competitor_aliases"] = {
+                k: list(v) for k, v in self.competitor_aliases.items()
+            }
         if self.cli:
             out["cli"] = dict(self.cli)
         return out
+
+
+def _competitor_aliases(raw: Any) -> dict[str, list[str]]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, list[str]] = {}
+    for canon, extra in raw.items():
+        name = str(canon).strip()
+        if not name:
+            continue
+        aliases = [str(a).strip() for a in (extra or []) if str(a).strip()]
+        if aliases:
+            out[name] = aliases
+    return out
 
 
 def _prompt_from_raw(raw: dict[str, Any]) -> Prompt:
@@ -100,6 +119,7 @@ def load_config(path: str | Path) -> Config:
         domain=str(data["domain"]),
         aliases=list(data.get("aliases") or []),
         competitors=list(data.get("competitors") or []),
+        competitor_aliases=_competitor_aliases(data.get("competitor_aliases")),
         engines=engines or list(ENGINES),
         prompts=prompts,
         cli={k: str(v) for k, v in (data.get("cli") or {}).items()},

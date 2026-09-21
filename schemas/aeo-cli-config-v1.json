@@ -19,7 +19,15 @@
     "competitors": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 },
-      "description": "Seed / known competitor set (expected category map; not URLs). Keep adding names up front. Deterministic regex uses this list for competitor_mentions and vendors_in_search_queries. Post-run LLM extract still discovers names absent from this list; those are flagged as surprises."
+      "description": "Seed / known competitor set (expected category map; not URLs). Keep adding names up front. Deterministic regex uses this list for competitor_mentions and vendors_in_search_queries. Post-run LLM extract still discovers names absent from this list; those are flagged as surprises. Duplicate seeds that are synonyms (Amazon/AWS API Gateway, Azure APIM/Management) collapse to one canonical vendor."
+    },
+    "competitor_aliases": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 }
+      },
+      "description": "Optional canonical name → extra spellings. Prefer one display (e.g. Amazon API Gateway) and list AWS API Gateway / amazon api gateway here. Duplicate seeds still collapse even without this map."
     },
     "engines": {
       "type": "array",
