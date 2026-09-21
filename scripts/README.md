@@ -6,6 +6,7 @@
   - Board brief → `board.json`
   - `--vendors-only` / `--stance-only` to run one pass. Re-runs skip completed keys (`prompt_id|engine|arm`).
 - `render_judge_html.py` — HTML with board actions on top and stance-colored K/S marks. “Who got named” = brand + **known** seed competitors. “Surprise competitors” is a separate amber section (names not on the seed list after normalize).
+- `change_report.py` — after **two** completed boards on the same roster, a first-class diff (not two HTML reports by hand). Brand mention Δpp per engine × arm, prompt-level miss→hit / hit→miss / hit→hit / still-miss, competitor risers/fallers/new/disappeared (surprises flagged). Prefers `vendors_judged.json`; regex fallback when a side lacks it. Writes `change.json` + `*-change-report.html`.
 
 ```bash
 # Directory of engine files:
@@ -15,6 +16,12 @@ AEO_TYK_RUN=~/.aeo/runs/tyk100-20260901 python3.11 scripts/render_judge_html.py
 # Single evidence JSON, vendor extract only:
 AEO_BRAND=Autheona python3.11 scripts/judge_run.py --vendors-only path/to/evidence.json
 python3.11 scripts/render_judge_html.py path/to/evidence.json
+
+# After a second roster run, diff N vs N−1 (baseline may be a dir or one evidence file):
+python3.11 scripts/change_report.py \
+  --baseline ~/.aeo/runs/tyk100-20260901 \
+  --current  ~/.aeo/runs/tyk100-20260921 \
+  --brand Tyk
 ```
 
 `AEO_RUN` is an alias for `AEO_TYK_RUN`. Brand comes from `AEO_BRAND`, else the evidence `workspace.brand`. Config `competitors` is the seed / known set (keep adding names up front). LLM extract still captures surprises; those are flagged, not folded into the known bars.

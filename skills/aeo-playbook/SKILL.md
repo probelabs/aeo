@@ -41,6 +41,7 @@ Do not use this to run the full grid (that is [aeo](../aeo/SKILL.md)) or only to
 6. No capture yet → stop. Freeze the protocol (inputs, versions, task list, content-addressed snapshot) first. Protocol matches the product. Do not invent a file-tree bake-off or MCP JSON for a product that does not ship those.
 7. After a ship and a same-backend check: re-run the affected **roster ids** with `--only-id` (repeatable). `--prompt-id` is only a label for `--prompt`. Raise n with `--samples 20` on that invocation only. n=20 × 3 engines × 2 arms = 120 cold starts per query. Use `--concurrency` on that one process if you parallelize cells.
 8. Keep the full roster. Do not drop watch queries. Do not inject the brand or incumbents into core seeds. Confirmation-probe satellites (`Foo vs Bar`) are not briefs. Do not restart an in-flight full-grid run.
+9. After a second completed board on the same roster, run `scripts/change_report.py --baseline <run_N-1> --current <run_N> --brand <Brand>` before drafting the cycle write-up. That is the brand Δ + competitor mover artifact — do not diff two HTML reports by hand.
 
 ## Calls → action
 
@@ -117,9 +118,11 @@ A run summary for humans is not done if any item is missing. Recompute every num
 9. Safe product claims vs claims you will not make.
 10. What you will re-run (`--only-id`) after ship, and what you will not (do not restart a full grid).
 
-Human view of the same payload: `python3 -m aeo board <file>` (markdown + JSON; `--format html` writes the standalone report) plus the evidence JSON. Merge engine files with `python3 -m aeo report --html --out report.html run-a.json run-b.json`.
+Human view of the same payload: `python3 -m aeo board <file>` (markdown + JSON; `--format html` writes the standalone report) plus the evidence JSON. Merge engine files with `python3 -m aeo report --html --out report.html run-a.json run-b.json`. After two runs on the same roster, `scripts/change_report.py` writes `change.json` + `*-change-report.html` (brand Δpp, prompt transitions, competitor risers/fallers/new/surprises).
 
 
 ## Testimony judge
 
 After a full evidence run, `scripts/judge_run.py` classifies each `brand_mentioned` cell (stance/position/quote) **and** extracts named vendors from every completed arm. Config `competitors` is the seed / known set. A miss that only names UserCheck still shows up as a **surprise** (not on the seed list). The board judge is fed high-frequency surprises as a gap. Then `scripts/render_judge_html.py`. `--vendors-only` skips stance. Do not treat CLI `recommended` as testimony. Grok AEO runs must use `GROK_HOME` without MCP and may need `GROK_SANDBOX=workspace` when Docker Desktop makes `docker.sock` a symlink.
+
+After **two** completed boards (same roster), `scripts/change_report.py --baseline <N-1> --current <N> --brand <Brand>` diffs them: brand mention Δpp per engine × arm, prompt-level miss→hit / hit→miss, competitor risers/fallers/new, surprises flagged. Baseline may lack `vendors_judged.json` (regex fallback). Writes `change.json` + `*-change-report.html`.

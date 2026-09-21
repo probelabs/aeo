@@ -145,7 +145,7 @@ python3 -m aeo run --config aeo.config.json --class focus --engine all --arm bot
    - Same-backend check: run that engine's search arm (or the raw WebSearch invocation in METHODOLOGY.md — never `--bare`) with the **literal** fan-out string. Inspect tool results / cited URLs for your canonical. A Bing or Brave "fetched" receipt is **not** this check. If the URL is not in that backend, the next action is index and wait, not a new draft.
    - Full decision tree (live vs clone vs not-indexed vs skipped): §11.
 
-7. Compare run N to run N−1 yourself on `prompt_id` + `prompt_text`. The CLI does not diff runs. Every cycle: did any watch leave the trap? Did a focus cell move miss → mention, or mention → a cited URL you own? The board will not extract citations; read `raw_response_text`.
+7. After two completed boards on the same roster, run `scripts/change_report.py` (brand mention Δpp, prompt-level miss→hit / hit→miss, competitor risers/fallers/new/surprises). Do not compare the two HTML reports by hand. Every cycle: did any watch leave the trap? Did a focus cell move miss → mention, or mention → a cited URL you own? The board will not extract citations; read `raw_response_text`.
 
 8. Never invent checkmarks. Recompute the board from evidence.
 
@@ -226,7 +226,7 @@ same-backend retrieval check (literal fan-out string)
 re-run ONLY those seeds (--only-id or --prompt, plus --samples if investing)
         │
         ▼
-compare boards yourself (prompt_id + prompt_text)
+change_report (run N vs N−1) — brand Δ, transitions, competitor movers
         │
         ▼
 Wilson CI on invested cells only
@@ -238,6 +238,13 @@ Do not wait for a monthly ritual. Do not restart an in-flight full-grid run. Do 
 ```bash
 python3 -m aeo run --config aeo.config.json --class all --engine all --arm both --concurrency 4
 python3 -m aeo board aeo-data/runs/<run_id>.json
+
+# after a second full roster (same prompt_ids), first-class diff — not two HTML reports by hand:
+python3.11 scripts/change_report.py \
+  --baseline ~/.aeo/runs/tyk100-20260901 \
+  --current  ~/.aeo/runs/tyk100-20260921 \
+  --brand Tyk
+# writes <current>/change.json and <current>/*-change-report.html
 
 # one roster seed, both arms (does NOT run the grid)
 python3 -m aeo run --config aeo.config.json --only-id search-pdfs-folder --engine all --arm both
@@ -380,7 +387,7 @@ When asked to summarize a run for humans (PR comment, report, memo), the artifac
 
 If any of those is missing, the write-up is not done.
 
-Human view of the same payload: `python3 -m aeo board <evidence.json>` (markdown + agent JSON; `--format html` writes the standalone report) plus the evidence JSON. Merge several engine files with `python3 -m aeo report --html --out report.html run-a.json run-b.json`.
+Human view of the same payload: `python3 -m aeo board <evidence.json>` (markdown + agent JSON; `--format html` writes the standalone report) plus the evidence JSON. Merge several engine files with `python3 -m aeo report --html --out report.html run-a.json run-b.json`. After two completed boards on the same roster, include the `scripts/change_report.py` artifact (brand Δ, prompt transitions, competitor movers) — see §12.
 
 
 ---
@@ -511,3 +518,23 @@ Per-hit schema: `stance` recommend|mention|warn|reject, `position` first|among|l
 Vendor cell: `vendors` / `query_vendors` as `{raw, normalized, role?}`, `confidence`. Keyed `prompt_id|engine|arm`.
 
 `recommended == brand_mentioned` in the CLI score is **not** testimony. Use the judge fields.
+
+### Change / progress report (after two runs)
+
+Once run N and run N−1 exist on the **same roster**, do not eyeball two boards. Diff them:
+
+```bash
+python3.11 scripts/change_report.py \
+  --baseline ~/.aeo/runs/<run_N-1> \
+  --current  ~/.aeo/runs/<run_N> \
+  --brand Tyk
+```
+
+`--baseline` may be a run directory **or** a single evidence JSON (older Tyk boards often have no `vendors_judged.json`; regex `competitor_mentions` / `vendors_in_search_queries` is the fallback). Writes `change.json` (machine) and `*-change-report.html` (human):
+
+1. Brand mention rates per engine × arm (K/S) — absolute rates + Δpp — plus search_rate Δ.
+2. Prompt-level transitions on matching `prompt_id` + engine + arm: miss→hit, hit→miss, hit→hit (stance/position when both sides have `judge.json`), still-miss. Unmatched prompt_ids and incomplete cells are listed, not scored.
+3. Competitor / vendor fan-out: risers, fallers, new, disappeared. Prefers `vendors_judged.json` (known vs surprise); else regex. Names are normalized.
+4. A short summary block (brand Δ, biggest competitor mover, new surprise).
+
+Math is deterministic Python. Same roster is assumed.
