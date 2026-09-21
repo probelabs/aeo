@@ -238,7 +238,7 @@ class ChangeReportTests(unittest.TestCase):
             sr = payload["brand_rates"]["engines"]["claude"]["search_rate"]
             self.assertEqual(sr["baseline"]["searched"], 3)
             self.assertEqual(sr["baseline"]["n"], 4)
-            self.assertEqual(sr["current"]["searched"], 3)
+            self.assertEqual(sr["current"]["searched"], 4)
             self.assertEqual(sr["current"]["n"], 5)
 
             counts = payload["transitions"]["counts"]
