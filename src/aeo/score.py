@@ -20,10 +20,14 @@ def score_arm(
     error: str | None = None,
 ) -> dict[str, Any]:
     text = parsed.raw_response_text
-    brand_mentions = extract_brand_mentions(text, cfg.brand, cfg.aliases)
+    brand_mentions = extract_brand_mentions(
+        text, cfg.brand, cfg.aliases,
+        product_form_only=getattr(cfg, "brand_product_form_only", None),
+    )
     competitor_mentions = extract_competitor_mentions(text, cfg.competitors)
     vendors = extract_vendors_in_queries(
-        parsed.search_queries, cfg.brand, cfg.aliases, cfg.competitors
+        parsed.search_queries, cfg.brand, cfg.aliases, cfg.competitors,
+        product_form_only=getattr(cfg, "brand_product_form_only", None),
     )
     brand_mentioned = bool(brand_mentions)
     arm: dict[str, Any] = {

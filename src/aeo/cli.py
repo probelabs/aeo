@@ -20,6 +20,7 @@ from aeo.board import (
 )
 from aeo.config import Config, filter_prompts, load_config, starter_config, write_config
 from aeo.engines import build_invocation, format_command
+from aeo.mention import product_form_only_from_config, rescore_brand_cells
 from aeo.evidence import (
     default_out_path,
     iter_evidence_files,
@@ -312,7 +313,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     if getattr(args, "html", False):
         from aeo.html_report import render_html_report
 
-        docs = [load_document(f) for f in files]
+        docs = [_rescored(load_document(f), _board_product_form_only(args)) for f in files]
         out = Path(args.out) if getattr(args, "out", None) else files[0].with_name(f"{files[0].stem}-report.html")
         html = render_html_report(docs, generated_from_files=[f.name for f in files])
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -324,9 +325,27 @@ def cmd_report(args: argparse.Namespace) -> int:
             print()
         if len(files) > 1:
             print(f"# {f}")
-        doc = load_document(f)
+        doc = _rescored(load_document(f), _board_product_form_only(args))
         print(render_doc(doc))
     return 0
+
+
+def _board_product_form_only(args: argparse.Namespace) -> list[str] | None:
+    """brand_match.product_form_only from --config, else mention.py default."""
+    cfg_path = getattr(args, "config", None)
+    if not cfg_path:
+        return None
+    try:
+        return product_form_only_from_config(load_config(cfg_path))
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def _rescored(doc: dict, product_form_only: list[str] | None) -> dict:
+    """Re-derive brand_mentioned from raw answers with the one strict matcher,
+    so evidence scored by an older/looser matcher cannot inflate the board."""
+    rescore_brand_cells(doc, product_form_only=product_form_only)
+    return doc
 
 
 def cmd_board(args: argparse.Namespace) -> int:
@@ -344,7 +363,7 @@ def cmd_board(args: argparse.Namespace) -> int:
         write_formats = ("md", "json")
     stdout_fmt = fmt or "md"
     out_dir = Path(args.out_dir) if args.out_dir else None
-    docs = [load_document(f) for f in files]
+    docs = [_rescored(load_document(f), _board_product_form_only(args)) for f in files]
     disk_formats = tuple(x for x in write_formats if x != "html")
     printed = 0
     for f, doc in zip(files, docs):
