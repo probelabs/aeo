@@ -395,5 +395,6 @@ class RankWordingTests(unittest.TestCase):
         from aeo.layers import _rank_word_depth
         self.assertEqual(_rank_word_depth(None, 100, 9), "not in the 9 results Google returned")
         self.assertEqual(_rank_word_depth(None, 100, 100), "not in top 100")
+        self.assertEqual(_rank_word_depth(None, 100, 98), "not in top 100")
         self.assertEqual(_rank_word_depth(None, 100), "not in top 100")
         self.assertEqual(_rank_word_depth(7, 100, 9), "#7")

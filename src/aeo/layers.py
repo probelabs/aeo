@@ -142,7 +142,7 @@ def _rank_word_depth(rank: Any, depth: Any, seen: Any = None) -> str:
         return f"#{rank}"
     depth = int(depth or 100)
     # Google sometimes returns one page even at depth 100; don't claim "not in top 100" off 9 results.
-    if isinstance(seen, int) and seen < depth:
+    if isinstance(seen, int) and seen < depth * 0.8:  # 94-99 of 100 is normal; 9 of 100 is one page
         return f"not in the {seen} results Google returned"
     return f"not in top {depth}"
 
