@@ -59,18 +59,23 @@ Answer:
 """
 
 BOARD_PROMPT = """You are the board judge for an AEO run. Brand: {brand}.
-You see COUNTS and SAMPLE HITS, not a sales brief. Write 5 to 7 actions a product/content person should take next.
+You see COUNTS, SAMPLE HITS and SEARCH EVIDENCE, not a sales brief. Write 5 to 7 actions a product/content person should take next.
 Return ONLY JSON:
 {{
-  "headline": "one sentence",
+  "headline": "one plain-English sentence",
   "actions": [
-    {{"title": "imperative <=12 words", "why": "what the numbers showed", "do": "concrete next step", "evidence": "ids or engines"}}
+    {{"title": "imperative <=12 words", "why": "what we saw, in plain English", "do": "concrete next step", "evidence": "real search queries the assistant typed, URLs it cited, or the question text"}}
   ]
 }}
 Rules:
-- Prefer gaps: named but last/aside/reject; classes with 0 mentions; engines that never search; vendors always ahead of {brand}.
+- The counts are exact. Use only them; never estimate or round them up into a percentage of "answers".
+- Write for a busy founder, not an analyst. Plain English only.
+  - Never write field or label names such as mention_k, mention_s, search_rate, knowledge_trap, search_likely, product_fit, prompt ids, or any snake_case word.
+  - Never write raw ratios or decimals such as 0/52, 1/93 or 0.172. Say it in words: "none of the 93 Codex answers", "1 of 372 answers", "Codex searched the web for almost every question".
+- Each action: "why" says what we saw; "do" says what to do. When an action is about being found through web search, quote 2 or 3 real search queries from SEARCH EVIDENCE and name the URLs the assistant cited instead of {brand}'s site. Do not invent queries, URLs, pages or features.
+- Prefer gaps: named but last/aside/reject; question groups where the brand never appears; engines that never search; vendors always ahead of {brand}.
 - Surprise competitors (named in answers but not on the config seed list) are a first-class gap. High-frequency surprises should get an action: review them, decide whether to add the repeats to the next run's seed list, and treat the category as an incumbent you did not expect.
-- Do not invent pages or features. Do not mention Tyk marketing slogans.
+- Do not mention Tyk marketing slogans.
 - No more than 7 actions. Rank by expected AEO lift.
 
 COUNTS:
@@ -78,6 +83,9 @@ COUNTS:
 
 SAMPLE HITS (stance/position/quote):
 {samples}
+
+SEARCH EVIDENCE (questions where the assistant searched the web and did not name {brand}: what it typed, and what it cited):
+{search_evidence}
 """
 
 VENDOR_PROMPT = """You extract product, vendor, and tool names from an answer (and optional search-query strings).
@@ -264,6 +272,119 @@ def claude_judge(query: str, answer: str) -> dict | None:
     return None
 
 
+CLASS_WORDS = {
+    "knowledge_trap": "questions assistants usually answer from memory",
+    "search_likely": "questions assistants usually search the web for",
+    "product_fit": "questions the brand is a direct fit for",
+    "focus": "focus questions",
+    "watch": "watch questions",
+}
+
+
+def class_words(label: str) -> str:
+    parts = [p for p in re.split(r"[+,]", str(label or "")) if p]
+    words = [CLASS_WORDS.get(p, p.replace("_", " ")) for p in parts] or ["unlabelled questions"]
+    return " that are also ".join(words)
+
+
+URL_RE = re.compile(r"https?://[^\s)\]>\"'`]+")
+
+
+def cited_urls(text: str) -> list[str]:
+    seen: list[str] = []
+    for u in URL_RE.findall(text or ""):
+        u = u.rstrip(".,;:")
+        if u not in seen:
+            seen.append(u)
+    return seen
+
+
+def search_evidence(docs: dict | None, max_items: int = 14, top_urls: int = 12) -> str:
+    """Real queries each engine typed and URLs it cited, on searched cells without the brand."""
+    if not docs:
+        return "(none)"
+    items: list[tuple[int, str]] = []
+    url_counts: Counter = Counter()
+    for e in ENGINES:
+        doc = docs.get(e)
+        if not doc:
+            continue
+        for pr in doc.get("prompts") or []:
+            cell = ((pr.get("engines") or {}).get(e) or {}).get("search")
+            if not isinstance(cell, dict) or cell.get("error") or not cell.get("searched"):
+                continue
+            if cell.get("brand_mentioned"):
+                continue
+            urls = cited_urls(answer_text(cell.get("raw_response_text") or ""))
+            for u in urls:
+                url_counts[u] += 1
+            queries = [str(q) for q in (cell.get("search_queries") or []) if str(q).strip()]
+            if not queries and not urls:
+                continue
+            fit = "product_fit" in str(pr.get("why") or pr.get("class") or "")
+            text = str(pr.get("prompt_text") or "").strip()
+            line = (
+                f"- {e} | question: {text[:200]}\n"
+                f"  typed: {json.dumps(queries[:3], ensure_ascii=False)}\n"
+                f"  cited: {json.dumps(urls[:3])}"
+            )
+            items.append((0 if fit else 1, line))
+    items.sort(key=lambda t: t[0])
+    out = [line for _, line in items[:max_items]]
+    if url_counts:
+        out.append("Most-cited URLs across these answers: " + json.dumps(url_counts.most_common(top_urls)))
+    return "\n".join(out) or "(none)"
+
+
+JARGON_RES = (
+    re.compile(r"\b[a-z]+(?:_[a-z0-9]+)+\b"),  # snake_case field / class names
+    re.compile(r"\b\d+\s*/\s*\d+\b"),         # raw ratios like 0/52
+    re.compile(r"(?<![\d.])0\.\d{2,}\b"),        # raw decimals like 0.172
+)
+
+
+def jargon_problems(brief: dict) -> list[str]:
+    """Internal labels or raw ratios that leaked into the board text (URLs and quotes ignored)."""
+    found: list[str] = []
+    parts = [str(brief.get("headline") or "")]
+    for a in brief.get("actions") or []:
+        parts += [str(a.get(k) or "") for k in ("title", "why", "do", "evidence")]
+    for text in parts:
+        text = URL_RE.sub(" ", text)
+        text = re.sub(r"\"[^\"]*\"|“[^”]*”", " ", text)
+        for rx in JARGON_RES:
+            found += [m.group(0) for m in rx.finditer(text)]
+    return sorted(set(found))
+
+
+def engine_rate_line(doc: dict, engine: str) -> str:
+    """Board counts for one engine, derived from the cells' brand_mentioned flags.
+
+    The doc-level mention_rate_* fields are written once by the runner and are not
+    refreshed when cells are rescored (e.g. with the strict brand matcher), so the
+    board must not trust them. Count completed (non-error) cells directly instead.
+    """
+    prompts = doc.get("prompts") or []
+    n_k = hit_k = n_s = hit_s = searched = 0
+    for pr in prompts:
+        arms = (pr.get("engines") or {}).get(engine) or {}
+        k = arms.get("knowledge")
+        s = arms.get("search")
+        if isinstance(k, dict) and not k.get("error"):
+            n_k += 1
+            hit_k += bool(k.get("brand_mentioned"))
+        if isinstance(s, dict) and not s.get("error"):
+            n_s += 1
+            hit_s += bool(s.get("brand_mentioned"))
+            searched += bool(s.get("searched"))
+
+    return (
+        f"{engine}: {len(prompts)} questions. Named the brand in {hit_k} of {n_k} answers "
+        f"written from memory and in {hit_s} of {n_s} answers written with web search allowed. "
+        f"Actually searched the web on {searched} of {n_s} questions."
+    )
+
+
 def summarize_for_board(
     run: Path,
     store: dict,
@@ -284,11 +405,7 @@ def summarize_for_board(
             if not fp.exists():
                 continue
             doc = load_json(fp)
-        n = len(doc.get("prompts") or [])
-        counts.append(
-            f"{e} prompts={n}/100 mention_k={doc.get('mention_rate_knowledge')} "
-            f"mention_s={doc.get('mention_rate_search')} search_rate={doc.get('search_rate')}"
-        )
+        counts.append(engine_rate_line(doc, e))
         for pr in doc.get("prompts") or []:
             why = pr.get("why") or pr.get("class") or "?"
             arms = (pr.get("engines") or {}).get(e) or {}
@@ -314,7 +431,9 @@ def summarize_for_board(
     counts.append("stance " + json.dumps(dict(stance_c)))
     counts.append("position " + json.dumps(dict(pos_c)))
     counts.append("ahead " + json.dumps(ahead_c.most_common(12)))
-    counts.append("class " + json.dumps({k: dict(v) for k, v in list(by_class.items())[:40]}))
+    for label, c in list(by_class.items())[:40]:
+        total = c["hit"] + c["miss"]
+        counts.append(f"{class_words(label)}: brand named in {c['hit']} of {total} answers")
     if docs:
         brand, aliases, competitors, competitor_aliases = workspace_from_docs(docs)
         surprises = surprise_frequencies(
@@ -333,10 +452,14 @@ def summarize_for_board(
 def board_judge(run: Path, store: dict, docs: dict | None = None) -> dict | None:
     vstore = load_vendor_store(load_store(run / "vendors_judged.json"))
     counts, samples = summarize_for_board(run, store, docs, vstore)
-    prompt = BOARD_PROMPT.format(brand=BRAND, counts=counts, samples=samples)
-    for _ in range(2):
+    prompt = BOARD_PROMPT.format(
+        brand=BRAND, counts=counts, samples=samples or "(none)", search_evidence=search_evidence(docs)
+    )
+    best = None
+    ask = prompt
+    for _ in range(3):
         try:
-            doc = claude_json(prompt, timeout=180)
+            doc = claude_json(ask, timeout=240)
         except subprocess.TimeoutExpired:
             doc = None
         if not isinstance(doc, dict) or not doc.get("actions"):
@@ -347,13 +470,23 @@ def board_judge(run: Path, store: dict, docs: dict | None = None) -> dict | None
                 continue
             clean.append({
                 "title": str(a.get("title") or "")[:120],
-                "why": str(a.get("why") or "")[:400],
-                "do": str(a.get("do") or "")[:400],
-                "evidence": str(a.get("evidence") or "")[:300],
+                "why": str(a.get("why") or "")[:600],
+                "do": str(a.get("do") or "")[:600],
+                "evidence": str(a.get("evidence") or "")[:600],
             })
-        if clean:
-            return {"headline": str(doc.get("headline") or "")[:280], "actions": clean, "judge": "claude"}
-    return None
+        if not clean:
+            continue
+        best = {"headline": str(doc.get("headline") or "")[:320], "actions": clean, "judge": "claude"}
+        bad = jargon_problems(best)
+        if not bad:
+            return best
+        best["jargon"] = bad
+        ask = prompt + (
+            "\n\nYour previous answer used internal labels or raw ratios: "
+            + ", ".join(bad[:20])
+            + ". Rewrite it in plain English with none of them."
+        )
+    return best
 
 
 def parse_args(argv: list[str]) -> tuple[Path, list[str], bool, bool]:

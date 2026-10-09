@@ -304,6 +304,78 @@ class JudgeRunCliTests(unittest.TestCase):
         self.assertIn("surprises", counts)
         self.assertIn("UserCheck", counts)
 
+    def test_board_rates_come_from_cells_not_stale_doc_fields(self):
+        judge = _load_judge()
+        cell = lambda hit, **kw: {"brand_mentioned": hit, "raw_response_text": "x", **kw}
+        docs = {
+            "claude": {
+                "workspace": {"brand": "Proof", "aliases": ["ReqProof"]},
+                # Stale loose-matcher aggregates left over from before a rescore.
+                "mention_rate_knowledge": 0.1828,
+                "mention_rate_search": 0.1935,
+                "search_rate": 0.9,
+                "prompts": [
+                    {"prompt_id": "a", "engines": {"claude": {
+                        "knowledge": cell(False), "search": cell(True, searched=True)}}},
+                    {"prompt_id": "b", "engines": {"claude": {
+                        "knowledge": cell(False), "search": cell(False, searched=False)}}},
+                    {"prompt_id": "c", "engines": {"claude": {
+                        "knowledge": {"error": "timeout"}, "search": cell(False)}}},
+                ],
+            }
+        }
+        counts, _ = judge.summarize_for_board(Path("/tmp"), {}, docs, {})
+        line = counts.splitlines()[0]
+        self.assertIn("claude: 3 questions.", line)
+        self.assertNotIn("/100", line)
+        self.assertIn("in 0 of 2 answers written from memory", line)
+        self.assertIn("in 1 of 3 answers written with web search", line)
+        self.assertIn("searched the web on 1 of 3", line)
+        self.assertNotIn("mention_k", counts)
+        self.assertNotIn("0.1828", counts)
+        self.assertNotIn("0.1935", counts)
+
+
+    def test_class_words_are_plain(self):
+        judge = _load_judge()
+        self.assertEqual(
+            judge.class_words("search_likely+product_fit"),
+            "questions assistants usually search the web for that are also questions the brand is a direct fit for",
+        )
+        self.assertEqual(judge.class_words("my_group"), "my group")
+
+    def test_search_evidence_lists_real_queries_and_urls(self):
+        judge = _load_judge()
+        docs = {"codex": {"prompts": [
+            {"prompt_id": "p1", "why": "product_fit", "prompt_text": "How do I trace requirements to tests?",
+             "engines": {"codex": {"search": {
+                 "searched": True, "brand_mentioned": False,
+                 "search_queries": ["requirements traceability tool open source"],
+                 "raw_response_text": "Try StrictDoc (https://strictdoc.readthedocs.io/en/stable/).",
+             }}}},
+            {"prompt_id": "p2", "why": "product_fit", "prompt_text": "skip me",
+             "engines": {"codex": {"search": {
+                 "searched": True, "brand_mentioned": True,
+                 "search_queries": ["x"], "raw_response_text": "Proof"}}}},
+        ]}}
+        ev = judge.search_evidence(docs)
+        self.assertIn("requirements traceability tool open source", ev)
+        self.assertIn("https://strictdoc.readthedocs.io/en/stable/", ev)
+        self.assertNotIn("skip me", ev)
+
+    def test_jargon_problems_flags_labels_and_ratios_not_urls(self):
+        judge = _load_judge()
+        bad = judge.jargon_problems({"headline": "mention_k 0.172 vs mention_s; search_likely 0/52", "actions": []})
+        self.assertIn("mention_k", bad)
+        self.assertIn("0/52", bad)
+        self.assertIn("0.172", bad)
+        ok = judge.jargon_problems({
+            "headline": "Codex named Proof in none of its 93 answers.",
+            "actions": [{"title": "t", "why": "w", "do": "d",
+                         "evidence": "Codex typed \"site_search tool\"; cited https://docs.pact.io/pact_broker/can_i_deploy"}],
+        })
+        self.assertEqual(ok, [])
+
 
 if __name__ == "__main__":
     unittest.main()
