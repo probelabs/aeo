@@ -69,6 +69,74 @@
       "type": "integer",
       "minimum": 1,
       "default": 1
+    },
+    "google_targets": {
+      "$ref": "#/$defs/google_search_list",
+      "description": "Approved Google searches to win (about 10). Checked on every run with the full analysis: AI Overview text and sources, top 10 organic, our position in the top 100, optional AI Mode. Separate from the LLM board scores."
+    },
+    "google_watch": {
+      "$ref": "#/$defs/google_search_list",
+      "description": "Optional wider watch list (any size, e.g. 20-50). Rankings and AI Overview citations only; a lighter table in the report."
+    },
+    "google": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Google layer (DataForSEO). On by default when DataForSEO credentials are set; enabled=false turns it off.",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "location_code": { "type": "integer", "default": 2840 },
+        "language_code": { "type": "string", "default": "en" },
+        "device": { "type": "string", "enum": ["desktop", "mobile"], "default": "desktop" },
+        "depth": { "type": "integer", "minimum": 10, "maximum": 100, "default": 100 },
+        "watch_depth": { "type": "integer", "minimum": 10, "maximum": 100, "default": 100 },
+        "mobile": { "type": "boolean", "default": false, "description": "Extra mobile snapshot for targets" },
+        "mobile_depth": { "type": "integer", "minimum": 10, "maximum": 100, "default": 10 },
+        "ai_mode": { "type": "boolean", "default": true, "description": "Google AI Mode for targets (about $0.004 per search)" },
+        "max_cost_usd": { "type": "number", "minimum": 0, "default": 2.0, "description": "Spending cap per run. Over-cap estimates are skipped before any call." },
+        "own_url_patterns": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Extra URL prefixes that count as ours, e.g. github.com/acme/tool" },
+        "workers": { "type": "integer", "minimum": 1, "default": 4 },
+        "retries": { "type": "integer", "minimum": 1, "default": 3 }
+      }
+    },
+    "gsc": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Search Console layer. On by default when GSC credentials are found; enabled=false turns it off.",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "site": { "type": "string", "minLength": 1, "description": "GSC property, e.g. sc-domain:acme.example or https://acme.example/. Default sc-domain:<domain>." },
+        "window_days": { "type": "integer", "minimum": 1, "default": 28 },
+        "lag_days": { "type": "integer", "minimum": 0, "default": 3 },
+        "row_limit": { "type": "integer", "minimum": 1, "maximum": 25000, "default": 5000 },
+        "top_n": { "type": "integer", "minimum": 1, "default": 25 },
+        "min_impressions": { "type": "integer", "minimum": 0, "default": 5 },
+        "striking_min_position": { "type": "number", "default": 5 },
+        "striking_max_position": { "type": "number", "default": 20 },
+        "suggest_limit": { "type": "integer", "minimum": 0, "default": 20 }
+      }
+    }
+  },
+  "$defs": {
+    "google_search_list": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "string", "minLength": 1 },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["query"],
+            "properties": {
+              "query": { "type": "string", "minLength": 1 },
+              "id": { "type": "string", "minLength": 1 },
+              "priority": { "type": "integer", "minimum": 1 },
+              "lead": { "type": "string" },
+              "page_should_demonstrate": { "type": "string" },
+              "notes": { "type": "string" }
+            }
+          }
+        ]
+      }
     }
   }
 }

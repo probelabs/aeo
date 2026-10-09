@@ -52,7 +52,7 @@ class ResumeTests(unittest.TestCase):
             cfg_path.write_text(json.dumps(cfg))
             out.write_text(json.dumps(existing))
             with patch("aeo.runner.run_invocation", side_effect=fake_run):
-                rc = main(["run", "--config", str(cfg_path), "--engine", "grok", "--arm", "both", "--out", str(out), "--timeout", "5"])
+                rc = main(["run", "--config", str(cfg_path), "--engine", "grok", "--arm", "both", "--out", str(out), "--timeout", "5", "--no-google"])
             self.assertEqual(rc, 0)
             doc = json.loads(out.read_text())
             ids = [p["prompt_id"] for p in doc["prompts"]]

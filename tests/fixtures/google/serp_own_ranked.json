@@ -1,0 +1,305 @@
+{
+ "version": "0.1.20260917",
+ "status_code": 20000,
+ "status_message": "Ok.",
+ "time": "17.3966 sec.",
+ "cost": 0.014,
+ "tasks_count": 1,
+ "tasks_error": 0,
+ "tasks": [
+  {
+   "status_code": 20000,
+   "status_message": "Ok.",
+   "time": "17.2861 sec.",
+   "cost": 0.014,
+   "result_count": 1,
+   "path": [
+    "v3",
+    "serp",
+    "google",
+    "organic",
+    "live",
+    "advanced"
+   ],
+   "data": {
+    "api": "serp",
+    "function": "live",
+    "se": "google",
+    "se_type": "organic",
+    "keyword": "We do SOC 2 and pentests but nothing verifies the business logic is right. What fills that gap?",
+    "location_code": 2840,
+    "language_code": "en",
+    "device": "desktop",
+    "depth": 100,
+    "load_async_ai_overview": true,
+    "tag": "buy-soc2-business-logic-gap",
+    "os": "windows"
+   },
+   "result": [
+    {
+     "keyword": "We do SOC 2 and pentests but nothing verifies the business logic is right. What fills that gap?",
+     "type": "organic",
+     "se_domain": "google.com",
+     "location_code": 2840,
+     "language_code": "en",
+     "check_url": "https://www.google.com/search?q=We%20do%20SOC%202%20and%20pentests%20but%20nothing%20verifies%20the%20business%20logic%20is%20right.%20What%20fills%20that%20gap%3F&hl=en&gl=US&ie=UTF-8&uule=w+CAIQIFISCQs2MuSEtepUEUK33kOSuTsc",
+     "datetime": "2026-10-09 15:41:03 +00:00",
+     "spell": null,
+     "refinement_chips": null,
+     "item_types": [
+      "ai_overview",
+      "organic",
+      "people_also_ask"
+     ],
+     "se_results_count": 26600,
+     "pages_count": 6,
+     "items_count": 13,
+     "items": [
+      {
+       "type": "ai_overview",
+       "rank_group": 1,
+       "rank_absolute": 1,
+       "page": 1,
+       "position": "left",
+       "xpath": "/html[1]/body[1]/div[3]/div[1]/div[13]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]",
+       "asynchronous_ai_overview": true,
+       "markdown": "**Business Logic Flaw (BLF) testing** is the specific discipline that fills the gap between standard compliance audits (like SOC 2) and automated vulnerability scans.While **SOC 2** proves you have security policies in place, and traditional **penetration testing** finds technical bugs (like outdated software or misconfigured servers), neither verifies if your application's workflows can be manipulated to bypass business rules—such as checking out of an e-commerce store with a negative balance or accessing another user's account by changing an ID in the URL.The most effective ways to bridge this gap include:\n\n### 1. Advanced, Human-Led Penetration Testing\nStandard, checkbox pentests often rely heavily on automated scanners, which cannot understand business context. You need to pivot toward **Application Penetration Testing** specifically scoped for business logic.\n\n- **How it helps:** Human testers map out your unique user journeys and actively look for ways to abuse the intended workflow.\n- **Action item:** When hiring pentest vendors, explicitly ask for an **assessment of business logic flaws** and demand manual testing of multi-step processes (e.g., checkout, password resets, approval workflows).\n\n### 2. Threat Modeling\nThreat modeling is a proactive design practice performed *before* or during development, rather than a reactive test after the code is built.\n\n- **How it helps:** By using frameworks like **STRIDE** , your engineering and security teams systematically review the application's architecture to ask, *\"What could go wrong if a user executes step 3 before step 1?\"* \n- **Action item:** Integrate threat modeling into the design phase of any major new feature or workflow change.\n\n### 3. Automated Behavioral & Contract Testing\nWhile traditional scanners miss logic flaws, specific types of developer-led testing can catch them in the CI/CD pipeline.\n\n- **Behavior-Driven Development (BDD):** Writing tests in plain language (e.g., \"Given a user has $0, When they try to buy a $10 item, Then the transaction is rejected\") ensures the system behaves exactly as the business intends.\n- **Integration & E2E Testing:** Building robust End-to-End (E2E) test suites that explicitly test negative paths (e.g., trying to approve your own expense report) prevents logic regressions.\n\n### 4. Continuous Bug Bounty Programs\nBecause business logic requires human creativity to break, crowdsourced security is uniquely suited for it.\n\n- **How it helps:** Platforms like HackerOne or Bugcrowd put your live application in front of thousands of ethical hackers who are incentivized to find the subtle design flaws automated tools miss.\n- **Action item:** Launch a private bug bounty program focused strictly on your core application workflows.\n\n\n\n---\n\nTo help point you toward the right solution, could you share a bit more about **what your application does** (e.g., fintech, SaaS, B2B portal) and **how your engineering team currently tests** new features?",
+       "items": [
+        {
+         "type": "ai_overview_element",
+         "position": "left",
+         "title": null,
+         "text": "Business Logic Flaw (BLF) testing is the specific discipline that fills the gap between standard compliance audits (like SOC 2) and automated vulnerability scans.",
+         "markdown": "**Business Logic Flaw (BLF) testing** is the specific discipline that fills the gap between standard compliance audits (like SOC 2) and automated vulnerability scans.",
+         "links": null,
+         "images": null,
+         "references": null
+        },
+        {
+         "type": "ai_overview_element",
+         "position": "left",
+         "title": null,
+         "text": "While SOC 2 proves you have security policies in place, and traditional penetration testing finds technical bugs (like outdated software or misconfigured servers), neither verifies if your application's workflows can be manipulated to bypass business rules—such as checking out of an e-commerce store with a negative balance or accessing another user's account by changing an ID in the URL.",
+         "markdown": "While **SOC 2** proves you have security policies in place, and traditional **penetration testing** finds technical bugs (like outdated software or misconfigured servers), neither verifies if your application's workflows can be manipulated to bypass business rules—such as checking out of an e-commerce store with a negative balance or accessing another user's account by changing an ID in the URL.",
+         "links": null,
+         "images": null,
+         "references": null
+        },
+        {
+         "type": "ai_overview_element",
+         "position": "left",
+         "title": null,
+         "text": "The most effective ways to bridge this gap include:",
+         "markdown": "The most effective ways to bridge this gap include:",
+         "links": null,
+         "images": null,
+         "references": null
+        },
+        {
+         "type": "ai_overview_element",
+         "position": "left",
+         "title": "1. Advanced, Human-Led Penetration Testing",
+         "text": "Standard, checkbox pentests often rely heavily on automated scanners, which cannot understand business context. You need to pivot toward Application Penetration Testing specifically scoped for business logic.",
+         "markdown": "Standard, checkbox pentests often rely heavily on automated scanners, which cannot understand business context. You need to pivot toward **Application Penetration Testing** specifically scoped for business logic.",
+         "links": null,
+         "images": null,
+         "references": null
+        },
+        {
+         "type": "ai_overview_element",
+         "position": "left",
+         "title": null,
+         "text": "How it helps: Human testers map out your unique user journeys and actively look for ways to abuse the intended workflow. Action item: When hiring pentest vendors, explicitly ask for an assessment of business logic flaws and demand manual testing of multi-step processes (e.g., checkout, password resets, approval workflows).",
+         "markdown": "- **How it helps:** Human testers map out your unique user journeys and actively look for ways to abuse the intended workflow.\n- **Action item:** When hiring pentest vendors, explicitly ask for an **assessment of business logic flaws** and demand manual testing of multi-step processes (e.g., checkout, password resets, approval workflows).",
+         "links": null,
+         "images": null,
+         "references": null
+        },
+        {
+         "type": "ai_overview_element",
+         "position": "left",
+         "title": "2. Threat Modeling",
+         "text": "Threat modeling is a proactive design practice performed before or during development, rather than a reactive test after the code is built.",
+         "markdown": "Threat modeling is a proactive design practice performed *before* or during development, rather than a reactive test after the code is built.",
+         "links": null,
+         "images": null,
+         "references": null
+        },
+        {
+         "type": "ai_overview_element",
+         "position": "left",
+         "title": null,
+         "text": "How it helps: By using frameworks like STRIDE, your engineering and security teams systematically review the application's architecture to ask, \"What could go wrong if a user executes step 3 before step 1?\" Action item: Integrate threat modeling into the design phase of any major new feature or workflow change.",
+         "markdown": "- **How it helps:** By using frameworks like **STRIDE** , your engineering and security teams systematically review the application's architecture to ask, *\"What could go wrong if a user executes step 3 before step 1?\"* \n- **Action item:** Integrate threat modeling into the design phase of any major new feature or workflow change.",
+         "links": null,
+         "images": null,
+         "references": null
+        },
+        {
+         "type": "ai_overview_element",
+         "position": "left",
+         "title": "3. Automated Behavioral & Contract Testing",
+         "text": "While traditional scanners miss logic flaws, specific types of developer-led testing can catch them in the CI/CD pipeline.",
+         "markdown": "While traditional scanners miss logic flaws, specific types of developer-led testing can catch them in the CI/CD pipeline.",
+         "links": null,
+         "images": null,
+         "references": null
+        },
+        {
+         "type": "ai_overview_element",
+         "position": "left",
+         "title": null,
+         "text": "Behavior-Driven Development (BDD): Writing tests in plain language (e.g., \"Given a user has $0, When they try to buy a $10 item, Then the transaction is rejected\") ensures the system behaves exactly as the business intends. Integration & E2E Testing: Building robust End-to-End (E2E) test suites that explicitly test negative paths (e.g., trying to approve your own expense report) prevents logic regressions.",
+         "markdown": "- **Behavior-Driven Development (BDD):** Writing tests in plain language (e.g., \"Given a user has $0, When they try to buy a $10 item, Then the transaction is rejected\") ensures the system behaves exactly as the business intends.\n- **Integration & E2E Testing:** Building robust End-to-End (E2E) test suites that explicitly test negative paths (e.g., trying to approve your own expense report) prevents logic regressions.",
+         "links": null,
+         "images": null,
+         "references": null
+        },
+        {
+         "type": "ai_overview_element",
+         "position": "left",
+         "title": "4. Continuous Bug Bounty Programs",
+         "text": "Because business logic requires human creativity to break, crowdsourced security is uniquely suited for it.",
+         "markdown": "Because business logic requires human creativity to break, crowdsourced security is uniquely suited for it.",
+         "links": null,
+         "images": null,
+         "references": null
+        },
+        {
+         "type": "ai_overview_element",
+         "position": "left",
+         "title": null,
+         "text": "How it helps: Platforms like HackerOne or Bugcrowd put your live application in front of thousands of ethical hackers who are incentivized to find the subtle design flaws automated tools miss. Action item: Launch a private bug bounty program focused strictly on your core application workflows.",
+         "markdown": "- **How it helps:** Platforms like HackerOne or Bugcrowd put your live application in front of thousands of ethical hackers who are incentivized to find the subtle design flaws automated tools miss.\n- **Action item:** Launch a private bug bounty program focused strictly on your core application workflows.",
+         "links": null,
+         "images": null,
+         "references": null
+        },
+        {
+         "type": "ai_overview_element",
+         "position": "left",
+         "title": null,
+         "text": "To help point you toward the right solution, could you share a bit more about what your application does (e.g., fintech, SaaS, B2B portal) and how your engineering team currently tests new features?",
+         "markdown": "To help point you toward the right solution, could you share a bit more about **what your application does** (e.g., fintech, SaaS, B2B portal) and **how your engineering team currently tests** new features?",
+         "links": null,
+         "images": null,
+         "references": null
+        }
+       ],
+       "references": null,
+       "rectangle": null
+      },
+      {
+       "type": "organic",
+       "rank_group": 1,
+       "rank_absolute": 2,
+       "domain": "reqproof.com",
+       "title": "We do SOC2 and pentests but nothing verifies the business ...",
+       "url": "https://reqproof.com/topics/soc2-pentest-business-logic",
+       "description": "SOC 2 asks whether access is logged, whether change management ran, whether the void is restricted to a role. A pentest asks whether that role can be skipped. Read more"
+      },
+      {
+       "type": "organic",
+       "rank_group": 2,
+       "rank_absolute": 3,
+       "domain": "www.konfirmity.com",
+       "title": "SOC 2 Penetration Testing: A 2026 Guide for Busy Teams ...",
+       "url": "https://www.konfirmity.com/blog/soc-2-penetration-testing",
+       "description": "Feb 1, 2026 — This article explains SOC 2 Penetration Testing in plain language. You'll learn what it means, why it matters, the exact steps to do it, ..."
+      },
+      {
+       "type": "organic",
+       "rank_group": 3,
+       "rank_absolute": 4,
+       "domain": "www.reddit.com",
+       "title": "In the middle of my SOC2 audit and they said I need a ...",
+       "url": "https://www.reddit.com/r/msp/comments/1d47tvh/in_the_middle_of_my_soc2_audit_and_they_said_i/",
+       "description": "Below, you can see all the suggestions; and some are good, but I chose to go with Red Sentry for the following reasons:\n\n* Fast Pentest: I received my report ..."
+      },
+      {
+       "type": "organic",
+       "rank_group": 4,
+       "rank_absolute": 5,
+       "domain": "www.blazeinfosec.com",
+       "title": "The Complete Buyer's Guide To SOC 2 Penetration Testing",
+       "url": "https://www.blazeinfosec.com/post/guide-to-soc-2-penetration-testing/",
+       "description": "Jan 30, 2023 — The answer is simple: penetration testing is not mandatory to achieve SOC 2 compliance. Whether or not to include it in your assessment is a ... Read more"
+      },
+      {
+       "type": "organic",
+       "rank_group": 5,
+       "rank_absolute": 6,
+       "domain": "www.clone-systems.com",
+       "title": "Bridging the SOC 2 Gap: Why Auditors Need Independent ...",
+       "url": "https://www.clone-systems.com/blog/bridging-soc2-gap-independent-testing?srsltid=AU7gw4WGrp5dfsVYB-YGXhWxGtnr4hqdIYBVzvLVayUhX2G3-OuhlADE",
+       "description": "In this article we explore why SOC 2 audits alone are not enough to prove your systems are secure, why auditors increasingly request evidence of external ... Read more"
+      },
+      {
+       "type": "organic",
+       "rank_group": 6,
+       "rank_absolute": 8,
+       "domain": "www.linkedin.com",
+       "title": "SOC2 is a scam (but so is everything else) | Steve S.",
+       "url": "https://www.linkedin.com/posts/steve-s-02298b1_soc2-is-a-scam-but-so-is-everything-else-activity-7308571475827929088-k0ND",
+       "description": "SOC2 - claims that it's a scam, broken, or being devalued by auditors, platforms, and tools. SOC2 persists because it's an improvement over ..."
+      },
+      {
+       "type": "organic",
+       "rank_group": 7,
+       "rank_absolute": 9,
+       "domain": "grsee.com",
+       "title": "SOC 2 Penetration Testing: Requirements & Best...",
+       "url": "https://grsee.com/resources/pentesting/penetration-testing-for-soc-2-compliance-essential-requirements/",
+       "description": "SOC 2 does not explicitly require penetration testing — but auditors expect it, and the Trust Service Criteria are far easier to evidence with one. Read more"
+      },
+      {
+       "type": "organic",
+       "rank_group": 8,
+       "rank_absolute": 10,
+       "domain": "nullstrikesecurity.com",
+       "title": "Do You Need a Penetration Test for SOC 2? How to Know ...",
+       "url": "https://nullstrikesecurity.com/blog/do-you-need-a-pentest-for-soc2",
+       "description": "SOC 2 requires evidence that your security controls work under adversarial conditions. Penetration testing is the most efficient way to produce that evidence. Read more"
+      },
+      {
+       "type": "organic",
+       "rank_group": 9,
+       "rank_absolute": 11,
+       "domain": "www.complyjet.com",
+       "title": "SOC 2 Penetration Testing Requirements, Process & Audit ...",
+       "url": "https://www.complyjet.com/blog/soc-2-penetration-testing",
+       "description": "Jun 29, 2026 — SOC 2 is a framework developed by the AICPA that validates a service organisation has the security controls needed to protect customer data. It ... Read more"
+      },
+      {
+       "type": "organic",
+       "rank_group": 10,
+       "rank_absolute": 12,
+       "domain": "netragard.com",
+       "title": "SOC 2 Penetration Testing Requirements for 2026",
+       "url": "https://netragard.com/blog/soc-2-penetration-testing-requirements/",
+       "description": "Feb 10, 2026 — The problems are threefold: Limited scope. Automated scanners identify some known vulnerabilities but cannot evaluate business logic flaws ... Read more"
+      },
+      {
+       "type": "organic",
+       "rank_group": 11,
+       "rank_absolute": 13,
+       "domain": "cybri.com",
+       "title": "Do You Really Need a Third Party for Your Penetration Test?",
+       "url": "https://cybri.com/blog/do-you-really-need-a-third-party-for-your-penetration-test/",
+       "description": "Jun 9, 2026 — Manual penetration testing fills that gap in ways that automation simply cannot replicate. Scanners identify known CVEs and misconfigured ... Read more"
+      },
+      {
+       "type": "organic",
+       "rank_group": 12,
+       "rank_absolute": 14,
+       "domain": "www.linkedin.com",
+       "title": "Reversing Our Stance on SOC 2 Type 1 Compliance | Ali Aleali ...",
+       "url": "https://www.linkedin.com/posts/aleali_soc2-saas-compliance-activity-7417636792474050560-lik5",
+       "description": "The auditor will come in check your policies, procedures and check a few controls, but they do not go back and look at your last few months."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

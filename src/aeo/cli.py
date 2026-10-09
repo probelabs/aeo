@@ -28,6 +28,7 @@ from aeo.evidence import (
     new_run_id,
     write_document,
 )
+from aeo.layers import load_layers, render_layers_markdown, with_layers
 from aeo.report import render_doc
 from aeo.runner import plan_remaining, recover_shards, run_jobs
 from aeo.validate import validate_config, validate_evidence
@@ -101,6 +102,25 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
 
+    p_run.add_argument(
+        "--no-google",
+        action="store_true",
+        help="Skip the Google (DataForSEO) and Search Console layers for this run",
+    )
+    p_run.add_argument("--google-max-cost", type=float, help="Spending cap in USD for the Google layer (overrides google.max_cost_usd)")
+
+    p_google = sub.add_parser("google", help="Google layers only: live SERP/AI Overviews (DataForSEO) + Search Console")
+    p_google.add_argument("--config", help="Path to aeo.config.json")
+    p_google.add_argument("--out-dir", help="Layer directory (default <data_dir>/google/<timestamp>; use <run>/google for a run dir)")
+    p_google.add_argument("--estimate", action="store_true", help="Print the cost estimate and exit; no API calls")
+    p_google.add_argument("--propose", action="store_true", help="Draft unapproved google_targets/google_watch suggestions and exit")
+    p_google.add_argument("--max-cost", type=float, help="Spending cap in USD (overrides google.max_cost_usd)")
+    p_google.add_argument("--no-ai-mode", action="store_true", help="Skip Google AI Mode for targets")
+    p_google.add_argument("--mobile", action="store_true", help="Also take a mobile snapshot of each target")
+    p_google.add_argument("--no-serp", action="store_true", help="Skip the DataForSEO layer")
+    p_google.add_argument("--no-gsc", action="store_true", help="Skip the Search Console layer")
+    p_google.add_argument("--reuse-raw", action="store_true", help="Rebuild google.json from raw/ in --out-dir; no API calls")
+
     p_rep = sub.add_parser("report", help="Print a table from evidence JSON")
     p_rep.add_argument("path", nargs="*", help="Evidence file(s) or data dir")
     p_rep.add_argument("--config", help="Used to find data_dir when path is omitted")
@@ -131,6 +151,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_board(args)
     if args.cmd == "validate":
         return cmd_validate(args)
+    if args.cmd == "google":
+        return cmd_google(args)
     parser.error("unknown command")
     return 2
 
@@ -264,6 +286,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
 
     print(f"done ran={ran} skipped={skipped} -> {out}", file=sys.stderr, flush=True)
+    _run_layers_after(cfg, out, args)
     print(out)
     return 0
 
@@ -315,6 +338,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         docs = [load_document(f) for f in files]
         out = Path(args.out) if getattr(args, "out", None) else files[0].with_name(f"{files[0].stem}-report.html")
         html = render_html_report(docs, generated_from_files=[f.name for f in files])
+        html = with_layers(html, files[0])
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(html, encoding="utf-8")
         print(out)
@@ -326,6 +350,10 @@ def cmd_report(args: argparse.Namespace) -> int:
             print(f"# {f}")
         doc = load_document(f)
         print(render_doc(doc))
+        layers_md = render_layers_markdown(*load_layers(f))
+        if layers_md:
+            print()
+            print(layers_md, end="")
     return 0
 
 
@@ -358,6 +386,7 @@ def cmd_board(args: argparse.Namespace) -> int:
             out_dir=out_dir,
             doc=doc,
         )
+        _add_layers_to_board_files(written, f)
         for kind, path in written.items():
             print(f"wrote {path}", file=sys.stderr)
         if stdout_fmt == "html":
@@ -368,11 +397,16 @@ def cmd_board(args: argparse.Namespace) -> int:
             print(render_json(board), end="")
         else:
             print(render_markdown(board, brand_terms=brand_terms), end="")
+            layers_md = render_layers_markdown(*load_layers(f))
+            if layers_md:
+                print()
+                print(layers_md, end="")
         printed += 1
     if "html" in write_formats:
         from aeo.html_report import merge_docs, render_html_report
 
         html = render_html_report(docs, generated_from_files=[f.name for f in files])
+        html = with_layers(html, files[0])
         dest = out_dir or boards_dir_for(files[0])
         dest.mkdir(parents=True, exist_ok=True)
         run_id = (merge_docs(docs).get("run") or {}).get("run_id") or files[0].stem
@@ -381,6 +415,82 @@ def cmd_board(args: argparse.Namespace) -> int:
         print(f"wrote {path}", file=sys.stderr)
         if stdout_fmt == "html":
             print(html, end="")
+    return 0
+
+
+def _add_layers_to_board_files(written: dict[str, Path], evidence: Path) -> None:
+    """Append the Google / Search Console sections to board md and add them to board json
+    under separate keys. Board scores are not touched."""
+    gdoc, sdoc = load_layers(evidence)
+    if not gdoc and not sdoc:
+        return
+    if "md" in written:
+        p = written["md"]
+        p.write_text(p.read_text(encoding="utf-8").rstrip() + "\n\n" + render_layers_markdown(gdoc, sdoc), encoding="utf-8")
+    if "json" in written:
+        p = written["json"]
+        board = json.loads(p.read_text(encoding="utf-8"))
+        if gdoc:
+            board["google"] = gdoc
+        if sdoc:
+            board["search_console"] = sdoc
+        p.write_text(json.dumps(board, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _run_layers_after(cfg: Config, out: Path, args: argparse.Namespace) -> None:
+    """Google + Search Console layers after a full config run. Skipped silently without credentials."""
+    if getattr(args, "no_google", False) or args.prompt or getattr(args, "only_ids", None) or cfg.path is None:
+        return
+    from aeo.layers import find_layer_dir, layer_dir_for, run_layers
+
+    if find_layer_dir(out) is not None:  # resume: already fetched for this evidence file
+        return
+    try:
+        run_layers(cfg.path, layer_dir_for(out), google_overrides={"max_cost_usd": getattr(args, "google_max_cost", None)})
+    except Exception as exc:  # layers must never fail the board run
+        print(f"google layers skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+
+def cmd_google(args: argparse.Namespace) -> int:
+    from datetime import datetime, timezone
+
+    from aeo import google as g
+    from aeo.layers import load_layers, run_layers, standalone_html
+
+    try:
+        cfg = _resolve_config(args.config)
+    except (FileNotFoundError, KeyError, ValueError) as exc:
+        print(f"config error: {exc}", file=sys.stderr)
+        return 1
+    raw = g.load_raw_config(cfg.path)
+    overrides = {"max_cost_usd": args.max_cost, "ai_mode": False if args.no_ai_mode else None, "mobile": True if args.mobile else None}
+    if args.estimate:
+        targets, watch = g.config_searches(raw)
+        print(json.dumps(g.estimate_cost(targets, watch, g.load_settings(raw, **overrides)), indent=2))
+        return 0
+    if args.propose:
+        sugg = g.propose_searches(raw)
+        path = g.write_proposals(g.proposals_path(cfg.path), **sugg)
+        print(f"wrote unapproved suggestions: {path}")
+        return 0
+    if args.out_dir:
+        out_dir = Path(args.out_dir)
+    else:
+        root = Path(cfg.data_dir)
+        if not root.is_absolute():
+            root = cfg.path.parent / root
+        out_dir = root / "google" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    if args.reuse_raw:
+        doc = g.run_google_layer(raw, out_dir, client=g.DataForSEOClient(transport=lambda *_: {}), settings=g.load_settings(raw, **overrides), reuse_raw=True)
+        res = {"google": doc, "gsc": None}
+    else:
+        res = run_layers(cfg.path, out_dir, google_overrides=overrides, skip_google=args.no_serp, skip_gsc=args.no_gsc)
+    if not res.get("google") and not res.get("gsc"):
+        print("no Google layer ran (no credentials, nothing approved to check, or over the cap)", file=sys.stderr)
+        return 0
+    gdoc, sdoc = load_layers(out_dir)
+    (out_dir / "google.html").write_text(standalone_html(gdoc, sdoc, f"{cfg.brand} · Google"), encoding="utf-8")
+    print(out_dir)
     return 0
 
 

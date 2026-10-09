@@ -1,0 +1,149 @@
+{
+ "_note": "Synthetic Search Console searchAnalytics.query responses (API shape) for acme.example. Keyed by period/dimension.",
+ "current/total": {
+  "rows": [
+   {
+    "clicks": 40,
+    "impressions": 2000,
+    "ctr": 0.02,
+    "position": 14.2
+   }
+  ],
+  "responseAggregationType": "byProperty"
+ },
+ "previous/total": {
+  "rows": [
+   {
+    "clicks": 25,
+    "impressions": 1500,
+    "ctr": 0.0167,
+    "position": 17.9
+   }
+  ],
+  "responseAggregationType": "byProperty"
+ },
+ "current/query": {
+  "rows": [
+   {
+    "keys": [
+     "local folder search"
+    ],
+    "clicks": 12,
+    "impressions": 300,
+    "ctr": 0.04,
+    "position": 6.1
+   },
+   {
+    "keys": [
+     "search folder by content"
+    ],
+    "clicks": 0,
+    "impressions": 120,
+    "ctr": 0.0,
+    "position": 8.4
+   },
+   {
+    "keys": [
+     "markdown search tool"
+    ],
+    "clicks": 3,
+    "impressions": 90,
+    "ctr": 0.03333333333333333,
+    "position": 12.0
+   },
+   {
+    "keys": [
+     "acme"
+    ],
+    "clicks": 20,
+    "impressions": 60,
+    "ctr": 0.3333333333333333,
+    "position": 1.2
+   },
+   {
+    "keys": [
+     "grep alternative for docs"
+    ],
+    "clicks": 0,
+    "impressions": 40,
+    "ctr": 0.0,
+    "position": 35.0
+   },
+   {
+    "keys": [
+     "ripgrep vs acme"
+    ],
+    "clicks": 1,
+    "impressions": 8,
+    "ctr": 0.125,
+    "position": 9.0
+   }
+  ]
+ },
+ "previous/query": {
+  "rows": [
+   {
+    "keys": [
+     "local folder search"
+    ],
+    "clicks": 5,
+    "impressions": 200,
+    "ctr": 0.025,
+    "position": 9.3
+   },
+   {
+    "keys": [
+     "markdown search tool"
+    ],
+    "clicks": 0,
+    "impressions": 30,
+    "ctr": 0.0,
+    "position": 22.0
+   },
+   {
+    "keys": [
+     "acme"
+    ],
+    "clicks": 18,
+    "impressions": 55,
+    "ctr": 0.32727272727272727,
+    "position": 1.1
+   }
+  ]
+ },
+ "current/page": {
+  "rows": [
+   {
+    "keys": [
+     "https://acme.example/"
+    ],
+    "clicks": 25,
+    "impressions": 900,
+    "ctr": 0.027777777777777776,
+    "position": 8.0
+   },
+   {
+    "keys": [
+     "https://acme.example/docs/folder-search"
+    ],
+    "clicks": 10,
+    "impressions": 600,
+    "ctr": 0.016666666666666666,
+    "position": 11.0
+   }
+  ]
+ },
+ "previous/page": {
+  "rows": [
+   {
+    "keys": [
+     "https://acme.example/"
+    ],
+    "clicks": 20,
+    "impressions": 800,
+    "ctr": 0.025,
+    "position": 9.0
+   }
+  ]
+ }
+}
