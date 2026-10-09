@@ -121,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     p_google.add_argument("--no-serp", action="store_true", help="Skip the DataForSEO layer")
     p_google.add_argument("--no-gsc", action="store_true", help="Skip the Search Console layer")
     p_google.add_argument("--reuse-raw", action="store_true", help="Rebuild google.json from raw/ in --out-dir; no API calls")
+    p_google.add_argument("--retry-failed", action="store_true", help="Keep good responses in raw/ under --out-dir and re-fetch only failed or missing searches")
 
     p_rep = sub.add_parser("report", help="Print a table from evidence JSON")
     p_rep.add_argument("path", nargs="*", help="Evidence file(s) or data dir")
@@ -503,7 +504,8 @@ def cmd_google(args: argparse.Namespace) -> int:
         doc = g.run_google_layer(raw, out_dir, client=g.DataForSEOClient(transport=lambda *_: {}), settings=g.load_settings(raw, **overrides), reuse_raw=True)
         res = {"google": doc, "gsc": None}
     else:
-        res = run_layers(cfg.path, out_dir, google_overrides=overrides, skip_google=args.no_serp, skip_gsc=args.no_gsc)
+        res = run_layers(cfg.path, out_dir, google_overrides=overrides, skip_google=args.no_serp, skip_gsc=args.no_gsc,
+                         retry_failed=args.retry_failed)
     if not res.get("google") and not res.get("gsc"):
         print("no Google layer ran (no credentials, nothing approved to check, or over the cap)", file=sys.stderr)
         return 0

@@ -28,7 +28,8 @@ def layer_dir_for(path: str | Path) -> Path:
 
 def find_layer_dir(path: str | Path) -> Path | None:
     p = Path(path)
-    cands = [p / "google"] if p.is_dir() else [p.parent / f"{p.stem}.google", p.parent / "google"]
+    # A run dir keeps layers in <run>/google; `aeo google --out-dir X` writes them straight into X.
+    cands = [p / "google", p] if p.is_dir() else [p.parent / f"{p.stem}.google", p.parent / "google"]
     for c in cands:
         if (c / "google.json").is_file() or (c / "gsc.json").is_file():
             return c
@@ -73,6 +74,7 @@ def run_layers(
     llm: Callable[[str], str] | None = None,
     log: Callable[[str], None] = _log,
     sleep: Callable[[float], None] | None = None,
+    retry_failed: bool = False,
 ) -> dict[str, Any]:
     """Run whichever layers have credentials and are enabled. Never raises for layer errors."""
     raw = g.load_raw_config(config_path)
@@ -102,7 +104,8 @@ def run_layers(
             try:
                 bp = g.discover_baseline(out, str(raw.get("domain") or ""), before=now)
                 base = json.loads(bp.read_text(encoding="utf-8")) if bp else None
-                kw: dict[str, Any] = {"settings": gs, "baseline": base, "baseline_path": str(bp) if bp else None, "log": log}
+                kw: dict[str, Any] = {"settings": gs, "baseline": base, "baseline_path": str(bp) if bp else None, "log": log,
+                                      "retry_failed": retry_failed}
                 if sleep is not None:
                     kw["sleep"] = sleep
                 doc = g.run_google_layer(raw, out, client=client, **kw)

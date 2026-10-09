@@ -346,3 +346,45 @@ class RunHookTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+ENVELOPE_50000 = {"verion": "0.1", "status_code": 50000, "status_message": "Internal Server Error.", "cost": 0, "tasks_count": 0, "tasks": None}
+
+
+class LiveRunRegressionTests(unittest.TestCase):
+    """Bugs seen on the first live Proof run (2026-10-09)."""
+
+    def test_envelope_50000_is_reported_not_none(self):
+        self.assertEqual(g.task_status(ENVELOPE_50000), 50000)
+        rec = g.analyze_serp(ENVELOPE_50000, proof_ctx())
+        self.assertFalse(rec["ok"])
+        self.assertEqual(rec["error"], "50000 Internal Server Error.")
+
+    def test_exception_records_one_code_per_attempt(self):
+        def boom(path, payload):
+            raise RuntimeError("DataForSEO call failed: x: URLError")
+        _, codes, _ = g.fetch_with_retries(g.DataForSEOClient(transport=boom), g.SERP_PATH, {"keyword": "k"}, g.Budget(1.0), 0.022, retries=2, sleep=lambda s: None)
+        self.assertEqual(codes, [None, None])
+
+    def test_load_layers_from_out_dir_itself(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "google-layers"
+            out.mkdir()
+            (out / "google.json").write_text(json.dumps({"schema_version": g.SCHEMA_VERSION, "searches": []}))
+            gd, _ = load_layers(out)
+            self.assertIsNotNone(gd)
+
+    def test_retry_failed_refetches_only_failures(self):
+        with tempfile.TemporaryDirectory() as d:
+            c = cfg(google_watch=["soc 2 business logic gap", "legacy modernization testing"], google={"workers": 1, "ai_mode": False})
+            out = Path(d) / "layers"
+            first = FakeDFS({("desktop", "soc 2 business logic gap"): [fx("serp_own_ranked")],
+                             ("desktop", "legacy modernization testing"): [ENVELOPE_50000]})
+            doc1 = g.run_google_layer(c, out, client=g.DataForSEOClient(transport=first), log=lambda m: None, sleep=lambda s: None)
+            self.assertEqual(doc1["summary"]["watch"]["ok"], 1)
+            second = FakeDFS({("desktop", "legacy modernization testing"): [fx("serp_aio_no_own")]})
+            doc2 = g.run_google_layer(c, out, client=g.DataForSEOClient(transport=second), log=lambda m: None, sleep=lambda s: None, retry_failed=True)
+            self.assertEqual({k for _, k, _ in second.calls}, {"legacy modernization testing"})
+            self.assertEqual(doc2["summary"]["watch"]["ok"], 2)
+            self.assertEqual(doc2["retry_failed"]["previous_api_calls"], doc1["api_calls"])
+            self.assertEqual(doc2["api_calls"], doc1["api_calls"] + len(second.calls))

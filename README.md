@@ -83,6 +83,7 @@ export DATAFORSEO_LOGIN=...  DATAFORSEO_PASSWORD=...        # or DATAFORSEO_USER
 python3 -m aeo google --config aeo.config.json --estimate  # cost estimate, no API calls
 python3 -m aeo google --config aeo.config.json             # fetch now -> <data_dir>/google/<timestamp>/
 python3 -m aeo google --config aeo.config.json --out-dir runs/<run>/google   # attach to a run dir (render_judge_html.py)
+python3 -m aeo google --config aeo.config.json --out-dir runs/<run>/google --retry-failed --no-gsc   # re-fetch only searches that errored (e.g. DataForSEO 50000/40101)
 ```
 
 `aeo run` fetches both layers after a full roster run into `runs/<run_id>.google/` (skipped for `--prompt`, `--only-id`, `--dry-run`, and on resume when the folder already exists). `--no-google` turns them off for one run; `"google": {"enabled": false}` / `"gsc": {"enabled": false}` turn them off in config.
