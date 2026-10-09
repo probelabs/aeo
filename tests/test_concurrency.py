@@ -174,6 +174,7 @@ class ConcurrentRunTests(unittest.TestCase):
                 rc = main(
                     [
                         "run",
+                        "--no-google",
                         "--config",
                         str(cfg_path),
                         "--engine",
@@ -217,6 +218,7 @@ class ConcurrentRunTests(unittest.TestCase):
                 rc = main(
                     [
                         "run",
+                        "--no-google",
                         "--config",
                         str(cfg_path),
                         "--engine",
@@ -256,6 +258,7 @@ class ConcurrentRunTests(unittest.TestCase):
                 rc = main(
                     [
                         "run",
+                        "--no-google",
                         "--config",
                         str(cfg_path),
                         "--engine",
@@ -302,6 +305,7 @@ class ConcurrentRunTests(unittest.TestCase):
                 rc = main(
                     [
                         "run",
+                        "--no-google",
                         "--config",
                         str(cfg_path),
                         "--engine",
@@ -335,6 +339,7 @@ class ConcurrentRunTests(unittest.TestCase):
                 rc = main(
                     [
                         "run",
+                        "--no-google",
                         "--config",
                         str(cfg_path),
                         "--engine",

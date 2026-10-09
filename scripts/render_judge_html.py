@@ -683,7 +683,9 @@ def main(argv: list[str] | None = None):
     # Keep the historical Tyk default filename when using that run dir.
     if run.is_dir() and run.name == "tyk100-20260901":
         html_out = run / "tyk100-20260901-report.html"
-    html_out.write_text(render(run))
+    from aeo.layers import with_layers  # Google / Search Console sections, if <run>/google/ has them
+
+    html_out.write_text(with_layers(render(run), run if run.is_dir() else run.parent))
     print("wrote", html_out)
 
 

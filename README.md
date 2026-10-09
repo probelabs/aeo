@@ -4,7 +4,7 @@ Measure whether coding agents mention your product.
 
 `aeo` asks Claude Code, Codex, and Grok the same realistic questions twice: once with search forced off, once with search allowed. It records the mention, whether they actually searched, the **literal** strings they typed into the search box, and which competitor names were already in those strings.
 
-That is the whole product. It is not Gemini grounding, not Google AI Overviews, and not a login to claude.ai.
+That is the whole board. It is not Gemini grounding and not a login to claude.ai. Google (AI Overviews, rankings) and Search Console are optional [separate layers](#google-and-search-console-layers) that never change the board scores.
 
 [Methodology](METHODOLOGY.md) · [Playbook](PLAYBOOK.md) · [Skills](skills/)
 
@@ -70,6 +70,56 @@ A zero-mention grid is not a prompt to write fifty articles.
 Portable agent skills live in [`skills/`](skills/): [aeo](skills/aeo/SKILL.md) (run), [aeo-board](skills/aeo-board/SKILL.md) (read), [aeo-playbook](skills/aeo-playbook/SKILL.md) (decide).
 
 After a full grid, `scripts/judge_run.py` labels stance on brand hits **and** extracts product names from every completed arm. Config `competitors` is the seed / known set; names not on that list after normalize are **surprises** (flagged separately). Brand hit rate stays the deterministic `brand_mentioned` regex. After a second run of the same roster, `scripts/change_report.py --baseline <N-1> --current <N> --brand <Brand>` writes the progress report (`change.json` + `*-change-report.html`). See [scripts/README.md](scripts/README.md).
+
+## Google and Search Console layers
+
+Most traffic still comes from Google, so a run can also check Google itself. Both layers are separate sections in the report (`aeo report --html`, `aeo board`, `scripts/render_judge_html.py`) and in the markdown/JSON outputs. They never touch evidence cells or board scores.
+
+**Google (DataForSEO).** On by default when DataForSEO credentials are set; skipped silently when they are not.
+
+```bash
+export DATAFORSEO_LOGIN=...  DATAFORSEO_PASSWORD=...        # or DATAFORSEO_USERNAME
+# or: export DATAFORSEO_CREDENTIALS_FILE=path/to/file      # any file with DATAFORSEO_LOGIN=/: and DATAFORSEO_PASSWORD=/: lines (env or YAML)
+python3 -m aeo google --config aeo.config.json --estimate  # cost estimate, no API calls
+python3 -m aeo google --config aeo.config.json             # fetch now -> <data_dir>/google/<timestamp>/
+python3 -m aeo google --config aeo.config.json --out-dir runs/<run>/google   # attach to a run dir (render_judge_html.py)
+```
+
+`aeo run` fetches both layers after a full roster run into `runs/<run_id>.google/` (skipped for `--prompt`, `--only-id`, `--dry-run`, and on resume when the folder already exists). `--no-google` turns them off for one run; `"google": {"enabled": false}` / `"gsc": {"enabled": false}` turn them off in config.
+
+Config fields:
+
+| Field | What it does |
+| --- | --- |
+| `google_targets` | About 10 short searches you want to win (strings or `{query, id, priority, lead, page_should_demonstrate, notes}`). Full analysis every run: AI Overview yes/no, full AIO text, cited sources (domain, url, title, ours highlighted), whether our domain is cited, top 10 organic (rank, title, url, domain), our position in the top 100, optional AI Mode. |
+| `google_watch` | Optional wider list, any size. Rankings and AIO citations only, shown as one table. |
+| `google.location_code` / `language_code` | Default 2840 (US) / `en`. |
+| `google.device`, `google.mobile`, `google.mobile_depth` | Desktop by default; `mobile: true` adds a mobile snapshot of each target. |
+| `google.depth`, `google.watch_depth` | Organic results to fetch (default 100 so we can report our position). |
+| `google.ai_mode` | Google AI Mode for targets (default on). |
+| `google.max_cost_usd` | Spending cap per run (default 2.0). If the pre-flight estimate is over it, nothing is fetched; retries stop at the cap. `--max-cost` / `--google-max-cost` override it. |
+| `google.own_url_patterns` | Extra URL prefixes that count as ours (e.g. `github.com/acme/tool`). Domain-style `aliases` count automatically; plain words never do. |
+
+Cost per search (DataForSEO list price, billed per 10 organic results): top 10 + AI Overview about $0.004; top 100 + AI Overview about $0.022; AI Mode about $0.004; mobile top 10 about $0.004. Ten targets at the defaults are about $0.26 per run; a 50-search watch list at depth 100 adds about $1.10 (set `watch_depth: 10` for about $0.20). Task errors such as 40101 are retried; 40106 (some deep pages missing) is kept and flagged as partial.
+
+If `google_targets` is missing, the run drafts 10 target and up to 20 watch searches with the same headless `claude` call the judge uses, writes them to `<config>.google-proposals.json` with `"status": "unapproved"`, and checks nothing from that list. Copy the ones you want into the config. `aeo google --propose` redrafts them.
+
+When an earlier layer folder for the same domain exists next to this one, each search shows what changed: rank moves, entering/leaving the top 100, AIO citation gained/lost, AIO appeared/disappeared, and new/dropped domains in the AIO sources and the top 10.
+
+**Search Console.** On by default when credentials are found; skipped silently otherwise. Read-only scope (`webmasters.readonly`) is enough.
+
+| Credential | Use |
+| --- | --- |
+| `GSC_CREDENTIALS_FILE` | Google `authorized_user` JSON (client_id, client_secret, refresh_token), or a `service_account` key (needs `pip install google-auth`; add the service account as a user on the property). |
+| `GSC_OAUTH_TOKEN_FILE` + `GSC_OAUTH_SECRETS_FILE` | The token `npx suganthan-gsc-mcp setup` writes (default `~/.gsc-mcp/oauth-token.json`) plus the Google OAuth client JSON used to refresh it. |
+
+| Field | What it does |
+| --- | --- |
+| `gsc.site` | Property, e.g. `sc-domain:acme.example` (default `sc-domain:<domain>`) or `https://acme.example/`. |
+| `gsc.window_days` / `lag_days` | Last 28 days ending 3 days ago (GSC data settles late) vs the 28 days before. |
+| `gsc.min_impressions`, `striking_min_position`, `striking_max_position`, `top_n`, `row_limit`, `suggest_limit` | Thresholds for the tables below. |
+
+Per run: totals (clicks, impressions, CTR, average position) for both windows, top queries and top pages, striking-distance queries (position 5-20 with real impressions), queries with impressions and no clicks, and GSC numbers for every `google_targets` / `google_watch` search, shown on its Google card next to the live rank. Queries with impressions that are not tracked yet go into the proposals file as unapproved `gsc_watch_suggestions`. When an earlier `gsc.json` exists, totals and tracked searches also show the change since that run.
 
 ## Example
 
