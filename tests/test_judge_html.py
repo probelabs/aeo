@@ -2,7 +2,10 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
+
+from aeo.vendors import seed_alias_map
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -97,7 +100,114 @@ class JudgeHtmlVendorTests(unittest.TestCase):
         self.assertIn("badge-surprise", html)
         box = html[html.index("<h2>Vendors typed into search</h2>") : html.index("<h2>Queries</h2>")]
         self.assertIn("UserCheck", box)
+        self.assertIn("badge-surprise", box)
+        self.assertIn("not on the config seed list", box)
         self.assertIn("Surprises", html)
+
+    def test_search_surprise_set_excludes_seed_even_if_answer_surprise(self):
+        render = _load_render()
+        amap = seed_alias_map(
+            "Tyk",
+            ["tyk"],
+            ["aws api gateway", "amazon api gateway"],
+        )
+        counts = Counter(
+            {"Amazon API Gateway": 5, "UserCheck": 2, "Tyk": 1}
+        )
+        # Answer-side Surprise competitors wrongly include the collapsed seed name.
+        surprise_names = {"UserCheck", "Amazon API Gateway"}
+        got = render.search_chart_surprise_set(counts, "Tyk", amap)
+        self.assertNotIn("Amazon API Gateway", got)
+        self.assertIn("UserCheck", got)
+        self.assertNotIn("Tyk", got)
+        self.assertTrue(amap.is_seed("Amazon API Gateway"))
+        self.assertNotEqual(got, got | surprise_names)
+
+    def test_search_chart_does_not_badge_seed_from_answer_surprises(self):
+        """Amazon API Gateway is a seed; UserCheck is an answer-side surprise.
+
+        Both appear in the search box. Only UserCheck should get a search-chart badge.
+        """
+        render = _load_render()
+        doc = {
+            "schema_version": "aeo-cli-evidence-v1",
+            "workspace": {
+                "brand": "Tyk",
+                "domain": "tyk.io",
+                "aliases": ["tyk", "tyk.io"],
+                "competitors": ["aws api gateway", "amazon api gateway"],
+            },
+            "run": {
+                "run_id": "t",
+                "timestamp": "2026-09-07T00:00:00Z",
+                "engines": ["claude"],
+                "samples_per_arm": 1,
+            },
+            "prompts": [
+                {
+                    "prompt_id": "leave-aws",
+                    "prompt_text": "What is closest to AWS API Gateway but self-hosted?",
+                    "class": "focus",
+                    "engines": {
+                        "claude": {
+                            "knowledge": _arm(
+                                comps=["amazon api gateway"],
+                                text="Amazon API Gateway and UserCheck are listed.",
+                            ),
+                            "search": _arm(
+                                searched=True,
+                                queries=["amazon api gateway vs usercheck"],
+                                qvendors=["amazon api gateway", "UserCheck"],
+                                comps=["UserCheck"],
+                                text="UserCheck is also named.",
+                            ),
+                        }
+                    },
+                }
+            ],
+        }
+        store = {
+            "leave-aws|claude|knowledge": {
+                "vendors": [
+                    {"raw": "Amazon API Gateway", "normalized": "Amazon API Gateway", "role": "mention"},
+                    {"raw": "UserCheck", "normalized": "UserCheck", "role": "mention"},
+                ],
+                "query_vendors": [],
+                "confidence": 0.9,
+                "judge": "claude",
+            },
+            "leave-aws|claude|search": {
+                "vendors": [{"raw": "UserCheck", "normalized": "UserCheck", "role": "mention"}],
+                "query_vendors": [
+                    {"raw": "amazon api gateway", "normalized": "Amazon API Gateway", "role": "mention"},
+                    {"raw": "UserCheck", "normalized": "UserCheck", "role": "mention"},
+                ],
+                "confidence": 0.85,
+                "judge": "claude",
+            },
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            (run / "claude.json").write_text(json.dumps(doc))
+            (run / "vendors_judged.json").write_text(json.dumps(store))
+            html = render.render(run)
+
+        surprise = html[
+            html.index("<h2>Surprise competitors</h2>") : html.index(
+                "<h2>Vendors typed into search</h2>"
+            )
+        ]
+        self.assertIn("UserCheck", surprise)
+        self.assertIn("badge-surprise", surprise)
+        self.assertNotIn("Amazon API Gateway", surprise)
+
+        box = html[html.index("<h2>Vendors typed into search</h2>") : html.index("<h2>Queries</h2>")]
+        self.assertIn("Amazon API Gateway", box)
+        self.assertIn("UserCheck", box)
+        self.assertIn("not on the config seed list", box)
+        # Badge only on the non-seed search name, not the collapsed seed.
+        self.assertIn("UserCheck <span class='badge-surprise'>surprise</span>", box)
+        self.assertNotIn("Amazon API Gateway <span class='badge-surprise'>surprise</span>", box)
 
     def test_regex_fallback_without_vendor_store(self):
         render = _load_render()

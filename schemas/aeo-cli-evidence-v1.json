@@ -24,6 +24,13 @@
         "competitors": {
           "type": "array",
           "items": { "type": "string" }
+        },
+        "competitor_aliases": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
         }
       }
     },

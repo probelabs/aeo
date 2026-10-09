@@ -12,12 +12,9 @@
   "competitors": [
     "kong",
     "apigee",
-    "aws api gateway",
-    "amazon api gateway",
-    "azure api management",
-    "azure apim",
-    "apache apisix",
-    "apisix",
+    "Amazon API Gateway",
+    "Azure API Management",
+    "Apache APISIX",
     "krakend",
     "traefik",
     "gravitee",
@@ -36,6 +33,15 @@
     "openapi",
     "auth0"
   ],
+  "competitor_aliases": {
+    "Amazon API Gateway": [
+      "aws api gateway",
+      "amazon api gateway",
+      "AWS API Gateway"
+    ],
+    "Azure API Management": ["azure apim", "azure api management"],
+    "Apache APISIX": ["apisix", "apache apisix"]
+  },
   "engines": [
     "claude",
     "codex",
