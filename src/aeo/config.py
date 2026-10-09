@@ -47,6 +47,9 @@ class Config:
     data_dir: str = "aeo-data"
     samples_per_arm: int = DEFAULT_SAMPLES_PER_ARM
     path: Path | None = None
+    # brand_match.product_form_only: brand terms that are English words (Proof)
+    # and only count in product form. None = mention.py default.
+    brand_product_form_only: list[str] | None = None
 
     def cli_path(self, engine: str) -> str:
         return self.cli.get(engine, engine)
@@ -65,6 +68,8 @@ class Config:
         }
         if self.cli:
             out["cli"] = dict(self.cli)
+        if self.brand_product_form_only is not None:
+            out["brand_match"] = {"product_form_only": list(self.brand_product_form_only)}
         return out
 
 
@@ -88,6 +93,12 @@ def _prompt_from_raw(raw: dict[str, Any]) -> Prompt:
     )
 
 
+def _product_form_only(raw: Any) -> list[str] | None:
+    if not isinstance(raw, dict) or raw.get("product_form_only") is None:
+        return None
+    return [str(t).strip() for t in raw.get("product_form_only") or [] if str(t).strip()]
+
+
 def load_config(path: str | Path) -> Config:
     p = Path(path)
     data = json.loads(p.read_text(encoding="utf-8"))
@@ -106,6 +117,7 @@ def load_config(path: str | Path) -> Config:
         data_dir=str(data.get("data_dir") or "aeo-data"),
         samples_per_arm=int(data.get("samples_per_arm") or DEFAULT_SAMPLES_PER_ARM),
         path=p,
+        brand_product_form_only=_product_form_only(data.get("brand_match")),
     )
 
 

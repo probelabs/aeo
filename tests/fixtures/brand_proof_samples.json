@@ -1,0 +1,682 @@
+{
+ "_about": "Verbatim answer excerpts for tests/test_brand_strict.py. false_positives: every cell the Oct 5 weekly runner (skill-v0, case-insensitive 'proof') counted as a Proof hit in ~/.aeo/runs/proof93-20261005; each excerpt is +-160 chars around every proof/Proof token (up to 4 per cell). true_hits: the 3 real hits in ~/.aeo/runs/proof93-20261002.",
+ "false_positives": [
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "accept-change-bottleneck",
+   "text": "actor, a feature and formatting forces reviewers to keep all of it in their heads. Big PRs get skimmed or put off.\n\n**4. Little evidence.** \"Looks right\" isn't proof. Reviewers want tests that show the behavior, screenshots, a reproduction of the bug, or benchmarks. When that's missing, they either check it themselves or bl"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "accept-agent-pr-trust",
+   "text": " what changed, why, what it deliberately didn't do, what it assumed, and what it couldn't verify. If the agent can't say what it skipped, be suspicious.\n\n## 2. Proof that it works\n- **CI passes on required checks**, enforced by branch protection, not taken on trust.\n- **A test that fails without the change and passes with i"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "factory-evidence-not-report",
+   "text": "fig so you aren't locked in.\n- Analyses/notebooks: **papermill** (parameterized, re-executable notebooks) plus **DVC** for data versions.\n\n**Signed, verifiable proof that it ran**\n- **in-toto / Witness** (TestifySec): wraps each step (`witness run -- make test`) and records inputs, outputs, environment, and the command as a"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "factory-evidence-not-report",
+   "text": "Structured output instead of screenshots | JUnit XML, SARIF (security scans), CTRF, Playwright traces (you can step through them later), Allure |\n| **4. Signed proof of what ran** | Cryptographic proof that *this* command ran on *these* inputs and produced *these* outputs | in-toto attestations, **witness** (wraps any comma"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "factory-evidence-not-report",
+   "text": "hots | JUnit XML, SARIF (security scans), CTRF, Playwright traces (you can step through them later), Allure |\n| **4. Signed proof of what ran** | Cryptographic proof that *this* command ran on *these* inputs and produced *these* outputs | in-toto attestations, **witness** (wraps any command and records an attestation), Sigs"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "factory-bring-security-finding",
+   "text": "# Turning a security finding into a verified fix with retained proof\n\nThe core idea: **the finding becomes a failing test before it becomes a fix.** If you can't make it fail, you can't prove you fixed it. Everything else is abo"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "factory-bring-security-finding",
+   "text": " **the finding becomes a failing test before it becomes a fix.** If you can't make it fail, you can't prove you fixed it. Everything else is about keeping that proof somewhere durable.\n\n## 1. Triage and pin down the claim\n- Record the finding in a tracked system with a stable ID, severity, affected versions, and source (sca"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "factory-bring-security-finding",
+   "text": "vulnerable code isn't reachable, your \"fix\" may be a **VEX** statement (OpenVEX / CycloneDX VEX) rather than a patch, and that statement is itself the retained proof.\n\n## 2. Reproduce as an exploit test (red)\n- Write the proof of concept as an automated test in the repo's normal test suite, not as a script in someone's note"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "factory-bring-security-finding",
+   "text": "statement (OpenVEX / CycloneDX VEX) rather than a patch, and that statement is itself the retained proof.\n\n## 2. Reproduce as an exploit test (red)\n- Write the proof of concept as an automated test in the repo's normal test suite, not as a script in someone's notes. Use pytest, Jest, Go tests, or similar for logic bugs. For"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "factory-bring-security-finding",
+   "text": "e fixer agrees it's fixed |\n\n\"The scanner no longer flags it\" is weak evidence on its own. Scanners miss things and can be fooled by refactors.\n\n## 4. Keep the proof\nBuild one evidence record per finding, linked from the ticket:\n- Finding ID, severity, reporter, and the dates it was reported, fixed and deployed (these feed "
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "factory-bring-security-finding",
+   "text": " logs expire.** GitHub Actions keeps them for 90 days by default, so export them to immutable storage (S3 with Object Lock, or your GRC tool).\n- **For stronger proof, sign attestations to the artifact.** Use **Sigstore cosign attest** or **in-toto** with **SLSA provenance** to record that the security tests passed against a"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "factory-bring-security-finding",
+   "text": ":** **HackerOne** (built-in retesting), **Bugcrowd**, **Cobalt** (pentest retests), and **PlexTrac** (pentest reporting with retest tracking).\n- **Supply-chain proof:** **Sigstore/cosign**, **in-toto**, **SLSA GitHub generator**, and **GUAC** for querying attestations.\n- **Audit evidence:** **Vanta**, **Drata** or **Securef"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "graph-start-one-component",
+   "text": "Audit readiness for that slice.** A clean, reproducible evidence trail for one system is useful in its own right, and it gives you a template for the rest.\n- **Proof of the workflow.** You learn whether your ID scheme, tagging conventions, and CI integration hold up before committing to them everywhere.\n\n## What you lose, a"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "impact-reach-vs-behavior",
+   "text": ".\n- **Semantic diff:** difftastic and SemanticDiff hide refactors that don't change meaning at the syntax level. They're helpful for reviewers, but they're not proof that behavior is the same.\n\n## Rule of thumb\n\nReachability tells you where to look. Behavioral evidence (mutation scores, diffs of replayed traffic, failing pr"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "stale-basis-changed",
+   "text": " revision numbers, so bumping a revision breaks coverage), StrictDoc, sphinx-needs.\n\n**Formal verification:** Dafny, Why3 and Lean/Coq incremental builds cache proof results and re-check only the obligations whose dependencies changed.\n\n**Process standards** (useful if you need justification for an audit): DO-178C regressio"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "bug-instance-vs-class",
+   "text": " history for earlier fixes of the same shape. Recurring bugs cluster.\n\nRecord a decision for every hit: vulnerable, safe (and why), or fixed. That list is your proof that you looked.\n\n## 3. Fix at a chokepoint\nIf the fix lives at one call site, the class is still open. Better options:\n- Route everything through one safe API"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "ai-verify-agent-code",
+   "text": "behind a flag.\n\nThe most useful habit overall: **verify with something the agent can't talk its way past.** A compiler, a test you wrote, a mutation score or a proof checker counts. The agent's own summary of what it did doesn't."
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "aina-assurance-mostly-ai",
+   "text": "zing, **Atheris** (Python), **cargo-fuzz**. Use **OSS-Fuzz** if the project is open source.\n- Treat coverage (**Codecov**, **Coveralls**) as a minimum bar, not proof of anything.\n\n**C. Static analysis and security scanning**\n- SAST: **Semgrep** (easy to add custom rules for your own codebase's anti-patterns), **CodeQL** / G"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "aina-assurance-mostly-ai",
+   "text": "placement for a human on the critical paths.\n\n## 5. Use formal verification for the core pieces\nAI makes formal methods much cheaper. The AI writes the spec or proof, and a mechanical checker decides whether it holds, so you don't have to trust the AI. This is worth it for a small, critical core such as a consensus protocol"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "legacy-behavioral-equivalence",
+   "text": ".\n\n- ApprovalTests (many languages)\n- Jest snapshots (JS)\n- `insta` (Rust)\n- `cupaloy` / `go-snaps` (Go)\n\n## 4. Formal or symbolic equivalence\nThis gives you a proof rather than test results. It's practical for small, bounded code such as algorithms, crypto and parsers.\n\n- **Symbolic execution:** KLEE (C/LLVM)\n- **Bounded m"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "legacy-behavioral-equivalence",
+   "text": "and SQL:** Datafold (data-diff between tables). Its open-source `data-diff` was archived, but it still works for basic use.\n\n## 4. Formal equivalence checking: proof, not sampling\nThis is worth the effort when correctness is critical and the code is small: crypto, numeric kernels, compiler passes.\n\n- **SAW** (Galois): prove"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "watch-check-code-correct",
+   "text": "om or malformed inputs to find crashes. Tools: AFL++, libFuzzer, Go's built-in fuzzing, cargo-fuzz.\n\n## 4. Formal verification (for critical code)\nMathematical proof that the code is correct. TLA+ is used for distributed system designs, Dafny for verified programs, and Kani for Rust.\n\n## 5. Process\n- **CI:** GitHub Actions "
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "reg-cra-24-72-clocks",
+   "text": "idence that a malicious actor has exploited it in a system without the owner's permission*. This means:\n   - A CVE disclosure, a researcher report or a working proof-of-concept does **not** start the clock by itself. You need evidence of malicious exploitation in the wild.\n   - Good-faith security testing doesn't count.\n   "
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "reg-aiact-evidence-engineering",
+   "text": "t meets the 15-day reporting deadline (2 days or 10 days for some incident types). Records of corrective actions. |\n| **If you're a deployer** | Logs you keep. Proof that you follow the provider's instructions. Assigned overseers and their training records. A fundamental rights impact assessment (Art. 27) if you're a public"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "intent-who-verifies",
+   "text": ", like concurrency, money, or auth: TLA+, Alloy, Dafny, Lean. AI has made these much cheaper to write, and a human only needs to review the short spec, not the proof.\n\n**5. Check that the tests actually constrain the code.**\nMutation testing (Stryker, PIT, mutmut, cargo-mutants) shows whether your tests would catch a wrong "
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "factory-issue-to-evidence",
+   "text": " capture the failure as an artifact\n\n- **For bugs, write a failing test first** and commit it (or keep it as the first commit on the branch). That test is your proof the problem existed.\n- **Pin the environment** so the failure reproduces the same way everywhere: **Dev Containers**, **Docker Compose**, **Nix/devenv**, or **"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "factory-issue-to-evidence",
+   "text": "test-reporter actions turn JUnit output into PR annotations, and Playwright's HTML report can be linked straight from the run.\n- **Optional extras for stronger proof:**\n  - **Mutation testing** (**Stryker**, **PIT**, **mutmut**) checks that the new tests actually catch broken code.\n  - **Preview environments** (**Vercel**/*"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "factory-continuous-not-periodic",
+   "text": "anch protection, required reviews and CODEOWNERS also count as controls, as long as they're enforced as rules rather than just documented.\n\n## 2. In the build: proof of what was built and how\n\nThis is the layer most teams skip, and it's what makes the evidence trustworthy.\n- **Generate an SBOM (software bill of materials) f"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "watch-what-is-traceability",
+   "text": "Change impact analysis:** when a requirement changes, shows which design, code and tests are affected.\n- **Compliance and audit:** shows a regulator or auditor proof that every requirement was implemented and verified.\n- **Scope control:** helps stop unrequested features from creeping in.\n\n### The main artifact: the traceab"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "stale-when-evidence-stale",
+   "text": "o, OPA Gatekeeper or Sigstore policy-controller.\n\n## 5. The green never meant much\n- **Retries hid a flaky test.** A flaky suite's green run is one sample, not proof. Flaky-test tools such as Trunk Flaky Tests, BuildPulse, and Datadog Test Optimization help here.\n- **Required checks were skipped** by path filters or `if:` c"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "stale-rerun-vs-reuse",
+   "text": "de the dependency closure.** For example, you edited package B and the test only depends on A, according to the build graph. \"I don't think it's related\" isn't proof.\n- **The check is deterministic and hermetic.** No network, clock, randomness, shared database or external service.\n- **You're iterating locally and the result"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "stale-rerun-vs-reuse",
+   "text": "sn't.\n7. **The old result is too old.** If the cached evidence predates dependency updates, infrastructure changes or a long gap, treat it as a hint and not as proof.\n\n**Quick test:** ask \"if this check ran now, could the result differ?\" If the answer is anything other than a confident no, rerun.\n\n## Tools that handle this "
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "auth-smallest-decision-pack",
+   "text": "d it back.\n- The blast radius is too large for the evidence → ask for a staged rollout.\n- It can't be undone and the evidence is weak → reject, or require more proof.\n\nIf the reviewer can't reach a confident yes or no in a couple of minutes from these facts, the change isn't ready for review yet. That's a better outcome tha"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "buy-prove-to-enterprise",
+   "text": "hip a **customer-runnable acceptance suite**, such as a containerized test harness, that checks the spec against their own deployment or a sandbox.\n- Offer a **proof-of-concept or pilot** with success criteria you agree on in advance.\n- Run **synthetic monitoring** of key user journeys in production with Checkly, Datadog Sy"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "buy-prove-to-enterprise",
+   "text": "e an enterprise customer is a chain of evidence they can check for themselves:\n\n**the spec → tests and checks that exercise it → evidence those checks passed → proof that the build they run is the build you tested → third-party attestation that your process is real.**\n\nBefore building anything, ask the customer what they'll"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "watch-what-is-formal-verification",
+   "text": " and **Prusti** (Rust).\n- **Frama-C** (C), **SPARK/Ada** (used in avionics and rail), and **CBMC** (C/C++).\n- **F\\*** for verified crypto and protocol code.\n\n**Proof assistants (for the deepest guarantees)**\n- **Lean 4**: a fast-growing community, Mathlib, and a lot of recent AI-assisted proving work.\n- **Coq/Rocq** (CompCe"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "watch-what-is-formal-verification",
+   "text": "**Formal verification** means using mathematical proof to show that a system (software, hardware, a protocol, or an algorithm) meets a precise specification. Testing checks some of the possible inputs. Formal verif"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "watch-what-is-formal-verification",
+   "text": "es never enter the critical section at once\", \"the system eventually responds\".\n3. **Verify** that the model satisfies the spec, either automatically or with a proof assistant. If it doesn't, you usually get a counterexample.\n\n## Main approaches\n| Approach | How it works | Trade-offs |\n|---|---|---|\n| **Model checking** | E"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "watch-what-is-formal-verification",
+   "text": "er of states can grow too large to explore |\n| **Deductive verification** | Code is annotated with pre/postconditions and invariants; SMT solvers discharge the proof obligations | Scales to real code, but takes annotation effort |\n| **Interactive theorem proving** | Humans write machine-checked proofs | The most expressive "
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "watch-what-is-formal-verification",
+   "text": "circuit computes the same result as the reference design.\"\n- **Model:** a formal description of the system, either the actual code or an abstraction of it.\n- **Proof:** a machine-checked argument that the model satisfies the specification.\n\nA proof is only as good as its spec and assumptions. If the spec is wrong or incompl"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "watch-what-is-formal-verification",
+   "text": "hecking), and **SPARK/Ada** (industrial strength).\n- **F\\*:** used for HACL\\* and Project Everest.\n- **Why3:** a platform that connects to many SMT solvers.\n\n**Proof assistants (heavy-duty, general math and CS):**\n- **Lean 4 (with Mathlib):** the most active community right now and the hub for AI-assisted proving.\n- **Rocq "
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "watch-what-is-formal-verification",
+   "text": "**Formal verification** means using mathematical proof to show that a system (software, hardware, a protocol, or an algorithm) meets a precise specification. Testing checks some inputs. Formal verification aims to "
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "watch-what-is-formal-verification",
+   "text": "scription of the system, either the actual code or an abstraction of it.\n- **Proof:** a machine-checked argument that the model satisfies the specification.\n\nA proof is only as good as its spec and assumptions. If the spec is wrong or incomplete, a \"verified\" system can still do the wrong thing.\n\n## Main approaches\n\n| Appro"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "reg-cra-active-exploitation",
+   "text": "on | **No**, but you still have to fix it under Annex I vulnerability handling |\n| CVSS 4.3, reliable evidence of exploitation in the wild | **Yes** |\n| Public proof-of-concept exists, no real-world attacks seen | Generally **no**. A PoC isn't exploitation |\n| Good-faith security research or pentest found it | **No**. The r"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "reg-cra-active-exploitation",
+   "text": "ve to fix it quickly under your Annex I vulnerability-handling duties |\n| CVSS 4.3, reliable evidence it's being exploited in your product | **Yes** |\n| Public proof-of-concept exploit only | Usually **no**. A PoC shows exploitation is possible, not that it has happened |\n| Found by a good-faith researcher or in your own pe"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "reg-us-sec-cyber-disclosure",
+   "text": "and an intake log of vendor breach notices.\n- SBOMs and dependency inventories so you can quickly answer \"are we affected by the vulnerable component?\"\n\n### 7. Proof that your Item 106 description is true\n- Your incident response plan, version history, and tabletop exercise records with follow-up actions.\n- Penetration test"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "reg-us-sec-cyber-disclosure",
+   "text": "en inside for months before detection, so 90 days of retention isn't enough. Plan for at least 12 months, with 18+ months in a cheaper storage tier.\n- **Tamper-proof storage:** write-once storage such as S3 Object Lock or Azure immutable blobs, with hashes and chain-of-custody records for disk, memory and cloud snapshots.\n-"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "reg-us-sec-cyber-disclosure",
+   "text": " team's qualifications.\n- **Outside help:** engagement letters and reports from any assessors or consultants you mention.\n- **Controls that work in practice:** proof that the escalation path described in your incident response plan was actually used (see section 1).\n\n## 6. External notifications log\n\nTrack every external no"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "accept-agent-pr-trust",
+   "text": "Require **evidence that the change works, independent verification, and a named human owner**. An agent’s summary is useful context; it isn’t proof.\n\nBefore merging, I’d require:\n\n1. **Clear acceptance criteria.** The PR explains the intended behavior, why the change is needed, and how you can verify it. S"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "factory-bring-security-finding",
+   "text": "s prevented, the fix reached the affected environment, and the supporting evidence is retrievable.\n\nI’d use this workflow:\n\n| Step | Required result | Retained proof |\n|---|---|---|\n| **1. Confirm and scope** | Identify affected assets, versions, root cause, severity, owner, and deadline. Reproduce safely where feasible. | "
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "factory-bring-security-finding",
+   "text": "ievable.\n\nUse one finding ID to connect this chain:\n\n**Finding → reproduction → fix → verification → deployment → retained evidence**\n\n| Step | Required work | Proof to retain |\n|---|---|---|\n| 1. Establish the finding | Identify affected assets, versions, impact, owner, and deadline. Define the closure criteria before patc"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "factory-bring-security-finding",
+   "text": "n evidence gate:** the finding closes only when you can show that the vulnerability existed, the fix prevents it, the deployed system contains the fix, and the proof remains retrievable.\n\nUse one finding ID to connect this chain:\n\n**Finding → reproduction → fix → verification → deployment → retained evidence**\n\n| Step | Req"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "impact-what-else-breaks",
+   "text": "er relationships missing from imports | **CodeScene** | Shows files that historically change together—useful clues to overlooked companion changes, rather than proof of breakage. [Docs](https://codescene.io/docs/guides/technical/hotspots.html) |\n| Check compatibility across services | **Pact** | Consumer/provider contract v"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "impact-config-change-no-diff",
+   "text": " | Dependencies or evidence assumptions are missing | Investigate; broaden verification until the uncertainty is resolved |\n\n**An absent dependency link is not proof of no impact.** Keep old evidence as a historical result; mark its applicability to the new configuration as suspect while reviewing it.\n\nFor example, changing"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "stale-basis-changed",
+   "text": "fied range | Changes within an explicitly verified operating range |\n| **Verification method** | Assertions, fixtures, mocks, test selection, checker versions, proof assumptions, or measurement procedures change materially | Presentation-only changes to reports |\n| **Data and external knowledge** | Relevant dataset, schema,"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "stale-basis-changed",
+   "text": " original verification’s quantified scope |\n\n**The missing fifth category is often the verifier itself.** A discovered bug in a test or unsound assumption in a proof can undermine old evidence even when the product has not changed.\n\nI would apply these rules:\n\n1. **Track dependencies per claim.** Include indirect dependenci"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "auth-adversarial-review",
+   "text": "reveal a need. Trying a different model family is a useful experiment, but measure whether it catches additional errors rather than treating model diversity as proof of independence."
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "auth-adversarial-review",
+   "text": " author’s explanations as claims to check. Change your assessment when new evidence warrants it. Do not invent objections or equate an unsuccessful search with proof of correctness. Finish with the important areas you could not verify.\n\n**Measure whether the review works.** Build a small benchmark containing known defects, "
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "bug-instance-vs-class",
+   "text": ". Sibling implementations were reviewed. Remaining exclusions are **[X]**.\n\n**Coverage percentages and a long run without failures are supporting evidence, not proof of closure.** Reserve an absolute claim for an exhaustive or formal argument within explicit assumptions; otherwise, report the scope and strength of the evide"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "bug-instance-vs-class",
+   "text": "ined invariant, a fix that enforces it across the affected scope, and tests that actively challenge that claim.** Tests alone generally provide confidence, not proof.\n\nI’d use these five checks:\n\n1. **Define the class by its cause.** Write: “Under conditions X, mechanism Y can violate invariant Z.” Avoid defining it by the "
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "ai-verify-agent-code",
+   "text": " investigation.\n\n6. **Get independent review proportional to the consequences.** Another agent can suggest counterexamples, but agreement between agents is not proof. Have someone qualified review consequential business rules, authorization, data migrations, and concurrency behavior.\n\nThese tools support different parts of "
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "ai-verify-agent-code",
+   "text": "ant business logic.\n\n6. **Require independent review for consequential changes.** Another AI can help find counterexamples, but agreement between models is not proof. For authentication, payments, concurrency, or migrations, have someone knowledgeable review the assumptions and failure behavior.\n\nThese tools support differe"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "ai-model-wrote-test-agrees",
+   "text": "blished library, official test vectors, or a simple reference implementation whose logic you can inspect. Investigate disagreements; agreement is evidence, not proof.\n\n5. **Verify the real outcome across integration boundaries.** If the function saves a setting, check that the setting survives reloading—not just that a mock"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "scale-safe-agentic-pipeline",
+   "text": "uired check definitions; explicitly review changed or deleted tests. Agent-written tests and another model’s review provide additional evidence, not sufficient proof. |\n| **5. Review a concrete change** | Present the diff, test results, security findings, and known limitations. Bind approval to the reviewed commit; invalida"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "legacy-behavioral-equivalence",
+   "text": "e the old and new implementations identical inputs and equivalent starting state, then compare their observable behavior.\n\nThe distinction is **evidence versus proof**: testing can find differences and build confidence; proving equivalence for every possible execution requires formal methods and a constrained scope. There i"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "watch-check-code-correct",
+   "text": "art with basic checks, focused tests for your most important behavior, and automated runs on every change. **Treat coverage as a way to find untested code, not proof that your tests are good.**\n\nWhat language are you using, and what does the code do?"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "reg-cra-24-72-clocks",
+   "text": "ty in your product:** reliable evidence of exploitation by a malicious actor without the system owner’s permission. A vulnerability finding, high CVSS score or proof-of-concept alone does not establish that trigger.\n- **A severe incident affecting product security:** Article 14(5) covers incidents that affect—or can affect—"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "reg-cra-24-72-clocks",
+   "text": "cious actor has exploited the vulnerability in a system without its owner’s permission. Merely discovering a vulnerability, assigning a CVE, or demonstrating a proof of concept does not by itself establish this trigger.\n- **A severe incident affecting product security:** an incident that harms—or can harm—the product’s prot"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "watch-software-quality-best",
+   "text": "rack customer-impacting failures, failed deployments, and recovery time. Turn significant bugs into regression tests. Treat coverage as a way to find gaps, not proof of correctness.\n\nFor a typical web application, these are practical tool choices:\n\n| Need | Recommendation | Why |\n|---|---|---|\n| Automated checks | [GitHub A"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "watch-software-quality-best",
+   "text": "uction bugs into regression tests. Track escaped defects, failed deployments, recovery time, and flaky tests. Treat coverage as a way to find gaps, rather than proof of correctness.\n\nUseful tools, depending on your stack:\n\n| Need | Recommendation |\n|---|---|\n| Enforce reviews and passing checks | **GitHub Actions with prote"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "intent-recover-from-tickets",
+   "text": "r, approval date, and evidence. Separate *explicitly approved*, *proposed*, *inferred*, and *disputed*. A closed ticket or confident summary is not, by itself, proof of approval.\n\n3. **Establish the current approved baseline.** Follow explicit supersession links and applicable scope. Don’t resolve contradictions by timestam"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "intent-recover-from-tickets",
+   "text": " it.\n\n   Keep source wording alongside your interpretation. Label missing approval evidence as **unverified**; an AI summary or a closed ticket is insufficient proof by itself.\n\n3. **Establish an approved baseline.** Have the accountable owner resolve genuine ambiguities once. Preserve disagreements instead of merging contr"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "impact-software-change-analysis",
+   "text": "ge-coupling and hotspot analysis. [Documentation](https://codescene.io/docs/guides/technical/hotspots.html) | Historical coupling is a clue to investigate, not proof of a dependency. |\n| Understand actual service connections | **Datadog Service Map** shows observed dependencies from APM and RUM data. [Documentation](https:/"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "ai-plausible-but-wrong",
+   "text": "s.coderabbit.ai/guides/code-review-overview) | Reviews changes and flags potential defects. Treat findings as hypotheses to verify; another AI’s approval isn’t proof. |\n\n**My starting recommendation:** independently reviewed acceptance tests, required CI, and one real integration test for each critical workflow. Add propert"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "buy-prove-to-enterprise",
+   "text": "esult → exact software release.** For most enterprise software, this is the practical way to demonstrate conformance. Testing supports confidence; mathematical proof requires formal specifications and verification within explicit assumptions.\n\nI’d build the customer acceptance process around five things:\n\n1. **Agree on meas"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "buy-prove-to-enterprise",
+   "text": "ormance, and recovery expectations.\n\n2. **Link every requirement to verification.** Maintain a requirements traceability matrix showing requirement ID, test or proof, result, evidence, and release. Make missing coverage and exceptions visible. Define expected results from the agreed specification, so tests don’t merely repr"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "buy-prove-to-enterprise",
+   "text": "ion. You must separately establish that the implementation matches that model. [Model checking](https://nightly.tlapl.us/doc/model/model.html) |\n| Mathematical proof of selected code | **Dafny** | Supports implementation verification against formal specifications. Useful when particular algorithms or invariants warrant stro"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "buy-prove-to-enterprise",
+   "text": "t or k6 where integration or performance claims matter. Reserve formal verification for properties whose failure would justify the additional specification and proof effort.\n\nThe statement you want to substantiate is: “Release X meets requirements A–N under conditions C, with these documented exceptions; here is the evidenc"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "legacy-rewrite-no-regressions",
+   "text": ", unusual customer configurations, and boundary cases. Review these baselines—the old system can contain bugs, so matching it is evidence of compatibility, not proof of correctness.\n\n3. **Replace one bounded capability at a time.** Put an interface or routing layer in front of it, then switch between old and new implementat"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "legacy-replace-no-specs",
+   "text": "ecord of the component’s behavior, then replace it incrementally behind a reversible switch.** Treat the legacy implementation as evidence of compatibility—not proof of correctness.\n\nI’d use this sequence:\n\n1. **Define the boundary and the reason for replacement.** Identify callers, inputs, outputs, database changes, emitte"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "watch-what-is-formal-verification",
+   "text": "ine-checked logical proofs. Some tools automate much of the reasoning; others require substantial guidance.\n\n**The guarantee is specific to what you prove.** A proof about a design model does not automatically verify its implementation. Checking a bounded model establishes results within those bounds. Missing requirements a"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "watch-what-is-formal-verification",
+   "text": "ents as its input, including duplicates.\n\nTesting checks particular inputs. Formal verification can establish these properties for **every input covered by the proof’s assumptions**. Tools such as Dafny let developers express these requirements alongside code and check that the implementation satisfies them. [Dafny](https:/"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "watch-what-is-formal-verification",
+   "text": "her two servers can simultaneously believe they are the leader. Results apply to the model and any bounds used.\n- **Theorem proving:** Construct a mathematical proof that a property follows from the system’s definitions and assumptions, often with substantial automation.\n\n**“Verified” always needs a qualifier: verified agai"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "watch-what-is-formal-verification",
+   "text": " and assumptions, often with substantial automation.\n\n**“Verified” always needs a qualifier: verified against which specification, under which assumptions?** A proof of correct sorting doesn’t establish security or performance. Likewise, verifying a system’s design doesn’t automatically verify its implementation.\n\nUseful to"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "watch-what-is-formal-verification",
+   "text": "del checking; completeness depends on sufficient bounds. |\n| Develop detailed mathematical or software proofs | [Lean](https://lean-lang.org/) | An interactive proof assistant with automation and machine-checked proofs. |\n| Verify cryptographic implementations | [SAW and Cryptol](https://tools.galois.com/saw) | Check that i"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "reg-cra-active-exploitation",
+   "text": "CRA actively exploited vulnerability report.** “CVE score” usually means the **CVSS score** attached to a CVE identifier; CVSS measures technical severity, not proof of exploitation. [FIRST’s CVSS explanation](https://www.first.org/cvss/faq)\n\nFor a manufacturer subject to the CRA, Article 14 requires reporting an actively e"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "reg-cra-active-exploitation",
+   "text": "practical distinction is:\n\n| What you know | Does that alone trigger this report? |\n|---|---|\n| CVSS 9.8 or 10.0 | **No.** Severity is insufficient. |\n| Public proof-of-concept code or an authorised penetration test | **No.** This alone does not establish malicious exploitation. |\n| High EPSS probability | **No.** It predic"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "reg-cra-active-exploitation",
+   "text": "ttps://www.cisa.gov/known-exploited-vulnerabilities-catalog):** monitor known exploitation evidence. Treat inclusion as an investigation signal; absence is not proof of safety.\n- **[OWASP Dependency-Track](https://docs.dependencytrack.org/):** map vulnerabilities to shipped components using SBOMs, track assessments, and exc"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "reg-cra-active-exploitation",
+   "text": "LEX:32024R2847)\n\nIn practice:\n\n| What you know | Does that alone trigger this report? |\n|---|---|\n| High/critical CVSS score or scanner finding | No |\n| Public proof-of-concept or successful authorised security test | No |\n| High EPSS exploitation-probability score | No—prediction is not evidence of exploitation |\n| Reliabl"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "knowledge",
+   "prompt_id": "reg-us-sec-cyber-disclosure",
+   "text": "mmitments. Link these measurements to Finance’s estimates of lost revenue, response costs, and reasonably likely future effects. |\n| **Containment and recovery proof** | Isolation actions, revoked credentials, configuration changes, patches, rebuild records, restoration tests, integrity checks, and monitoring results. Docum"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "reg-us-sec-cyber-disclosure",
+   "text": " time. Preserve calculation methods and assumptions so finance can translate technical impact into loss estimates and scenarios. |\n| **Containment and recovery proof** | Records of isolation, credential revocation, patching, rebuilds, backup restoration, integrity checks, and post-recovery monitoring. Support claims that se"
+  },
+  {
+   "run": "proof93-20261005",
+   "engine": "codex",
+   "arm": "search",
+   "prompt_id": "factory-request-to-production",
+   "text": "ion) |\n| Automated code review | **CodeRabbit** | Reviews PRs and subsequent commits, producing findings and summaries. Treat these as additional evidence, not proof of correctness. [Documentation](https://docs.coderabbit.ai/guides/code-review-overview) |\n| Behavioral evidence | **Playwright** | Browser tests and inspectabl"
+  }
+ ],
+ "true_hits": [
+  {
+   "run": "proof93-20261002",
+   "engine": "claude",
+   "arm": "search",
+   "prompt_id": "intent-accountable-authority",
+   "text": "A human who owns the product decision should approve it. The agent should never approve its own proposal. An agent can find a gap and draft the requirement, but a new product promise commits the organization to something, so someone accountable for that commitment has to sign off.\n\n**Who approves**\n\n1. **The product owner for that area** (PM, product owner or feature owner) gives the main approval. They decide whether the product should make the promise at all.\n2. **Domain reviewers**, depending on what the promise touches:\n   - Safety or hazard-related: the safety or systems engineer\n   - Security, privacy or data handling: the security or privacy owner\n   - Regulatory or customer-facing (SLAs, claims in docs or contracts): QA/RA, compliance or legal\n   - Architecture or feasibility: the tech lead or component owner\n3. **Not the proposer.** Keep proposing and approving separate. The engineer who prompted the agent shouldn't be the only approver, and neither should another agent. Agent approval can be fine for low-risk details inside a promise that's already approved, but not for a new one.\n\n**What the agent should do instead**\n\n- Submit the requirement in a \"proposed\" or \"draft\" state. Agents shouldn't be able to set it to \"approved.\"\n- Attach the reason: the code, ticket or behavior that suggested the requirement, plus any conflicts with existing requirements.\n- Treat the requirement as non-binding, and keep it out of what the agent builds or tests against, until a human approves it.\n- Record who approved it, when, and which version, so there's an audit trail.\n\n**Tools that support this**\n\n- **Proof (reqproof.com):** It's built for agent workflows. It keeps agents within approved requirements, and you can choose what needs human approval versus agent approval, including requiring human sign-off for changes that touch specific components.\n- **Jama Connect, Siemens Polarion, PTC Codebeamer:** Requirements tools with role-based review and approval workflows and electronic signatures. They suit regulated settings such as 21 CFR Part 11, ISO 26262 or DO-178C.\n- **Requirements as code (StrictDoc or Doorstop in Git):** Use GitHub or GitLab `CODEOWNERS` and branch protection so changes to requirement files need approval from the named product or domain owners. Agents open pull requests but can't merge them.\n\nIn short, the agent proposes, the product owner decides, the relevant domain owners review, and the tooling stops anything from becoming binding until a human approves it.\n\nSources:\n- [Proof (reqproof.com)](https://reqproof.com/)\n- [Human Oversight for AI Agents: When Is Approval Required?](https://kla.digital/blog/human-oversight-ai-agents-approval-required)",
+   "expect": [
+    "reqproof.com",
+    "Proof"
+   ]
+  },
+  {
+   "run": "proof93-20261002",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "watch-what-is-software-audit",
+   "text": "A **software audit** is a structured, independent review of a piece of software, or of how it is built and used, against a set of criteria. Those criteria can be legal, security, quality, process or regulatory. Its output is a report of findings, with evidence, ranked by severity, plus recommendations. It is more formal than a routine code review and is often done by a third party.\n\n## Common types\n\n| Type | What it checks | Typical trigger |\n|---|---|---|\n| **License / compliance audit** | That the organization actually holds licenses for the software it installs and uses (seats, versions, entitlements) | Vendor audits (Microsoft, Oracle, SAP, IBM), true-ups |\n| **Open-source / IP audit** | Third-party and OSS components in the code, their licenses (GPL, AGPL and so on) and copyleft obligations | M&A due diligence, product release |\n| **Security audit** | Vulnerabilities, insecure design, secrets, dependency CVEs, configuration | Pentests, SOC 2, ISO 27001, customer requirements |\n| **Code quality / technical due diligence** | Maintainability, architecture, test coverage, technical debt, bus factor | Acquisitions, investment, vendor selection |\n| **Process / regulatory audit** | That development follows a required process (requirements traceability, verification, change control) | Safety-critical domains: DO-178C (avionics), ISO 26262 (automotive), IEC 62304 (medical), FDA, SOX controls |\n| **Smart contract audit** | Logic and security flaws in on-chain code | Before deploying to mainnet |\n\n## Typical process\n1. **Scope:** decide which systems, which standard, and which time period.\n2. **Gather evidence:** code, SBOMs, logs, configs, requirements and test records, license entitlements.\n3. **Analyze:** run automated scans and do manual review, interviews and sampling.\n4. **Report:** list findings by severity, note gaps against the standard, and recommend fixes.\n5. **Remediate and follow up:** fix the issues, then re-audit or verify the fixes.\n\n## Tools and products\n\n**Software composition analysis, OSS licensing and SBOMs**\n- Black Duck (formerly Synopsys), the usual choice for M&A code audits\n- Snyk Open Source, Mend (formerly WhiteSource), FOSSA, Sonatype Lifecycle\n- Free options: OWASP Dependency-Check, Syft + Grype, ScanCode Toolkit, Trivy\n\n**Security (SAST/DAST)**\n- Static analysis (SAST): Semgrep, GitHub Advanced Security / CodeQL, Checkmarx, Veracode, SonarQube\n- Dynamic testing (DAST): OWASP ZAP, Burp Suite\n- Secret scanning: Gitleaks, TruffleHog\n\n**Code quality and technical due diligence**\n- SonarQube / SonarCloud, CodeScene (behavioral and hotspot analysis), Code Climate\n- Firms that do due-diligence audits: Black Duck Audits, Sema, Crosslake\n\n**Software asset management (license compliance)**\n- Flexera One, Snow Software (now part of Flexera), ServiceNow SAM Pro, Ivanti\n\n**Compliance automation (SOC 2 / ISO 27001 evidence)**\n- Vanta, Drata, Secureframe\n\n**Regulated or safety-critical traceability**\n- Jama Connect, Polarion, IBM DOORS, LDRA, Parasoft, and requirements-traceability tooling such as ReqProof, for showing auditors the links from requirements to code to tests\n\n**Smart contracts**\n- Slither and Mythril (tools); Trail of Bits, OpenZeppelin and ConsenSys Diligence (audit firms)\n\nIf you tell me which kind of audit you're facing (for example a vendor license audit, acquisition due diligence, SOC 2 or a safety certification), I can narrow this down to a specific checklist and toolset.",
+   "expect": [
+    "ReqProof"
+   ]
+  },
+  {
+   "run": "proof93-20261002",
+   "engine": "claude",
+   "arm": "knowledge",
+   "prompt_id": "watch-check-code-correct",
+   "text": "\"Correct\" can mean a few different things, and each one has its own tools. I'd stack them in this order, cheapest first:\n\n## 1. Static checks (no need to run the code)\n- **Type checkers:** TypeScript (`tsc --strict`), mypy or Pyright for Python, and the compiler itself for Go, Rust, Java and similar languages.\n- **Linters:** ESLint, Ruff (Python), golangci-lint, Clippy (Rust), RuboCop.\n- **Static analyzers:** Semgrep, SonarQube/SonarCloud, CodeQL (free on GitHub). These catch bug patterns and security problems.\n\n## 2. Tests (does it behave as intended?)\n- **Unit tests:** Jest or Vitest (JS/TS), pytest, `go test`, `cargo test`, JUnit.\n- **Integration and end-to-end tests:** Playwright or Cypress for web apps, Testcontainers when you need real databases or services.\n- **Coverage:** use it to find code your tests never run, not as a goal to hit. Tools: `c8`/Istanbul, `coverage.py`, `go test -cover`, Codecov.\n- **Mutation testing:** Stryker, mutmut, PIT. These deliberately break your code and check that your tests notice.\n\n## 3. Finding edge cases you didn't think of\n- **Property-based testing:** Hypothesis (Python), fast-check (JS), proptest (Rust), `rapid` (Go). You describe rules that must always hold, and the tool generates hundreds of inputs to try to break them.\n- **Fuzzing:** Go's built-in `go test -fuzz`, cargo-fuzz, AFL++, libFuzzer, OSS-Fuzz.\n- **Runtime sanitizers:** the `-race` flag in Go, AddressSanitizer and UBSan for C/C++, Valgrind.\n\n## 4. Checking against requirements\nPassing tests only shows the code does what the tests say. It doesn't show the code does what it's supposed to do.\n- Write down the requirements and link each one to the tests that verify it. Requirements-traceability tools such as Jama, Polarion, Doorstop or ReqProof help keep that mapping current.\n- For critical logic, you can go further with formal methods: TLA+ for designs and concurrency, Dafny, Coq/Lean, Kani (Rust), or CBMC.\n\n## 5. People and automation\n- **Code review:** another human, or an AI reviewer such as Claude Code's `/code-review`.\n- **CI:** run all of the above on every commit with GitHub Actions or GitLab CI, so nothing gets skipped.\n\n**What to do first:** turn on strict type checking and a linter, write unit tests for the core logic, add property-based tests for anything with tricky inputs, and run it all in CI. Save fuzzing and formal methods for code where bugs are expensive, like parsers, money handling, security code or concurrency.\n\nIf you tell me your language and what the code does, I can narrow this down to a specific setup.",
+   "expect": [
+    "ReqProof"
+   ]
+  }
+ ]
+}
