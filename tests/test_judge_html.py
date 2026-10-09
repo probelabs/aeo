@@ -103,6 +103,12 @@ class JudgeHtmlVendorTests(unittest.TestCase):
         self.assertIn("badge-surprise", box)
         self.assertIn("not on the config seed list", box)
         self.assertIn("Surprises", html)
+        # header follows the workspace, not the historical Tyk defaults
+        head = html[: html.index("<main>")]
+        self.assertIn("<title>Autheona · AEO report</title>", head)
+        self.assertIn("autheona.com", head)
+        self.assertNotIn("Tyk", head)
+        self.assertNotIn("of Tyk hits", html)
 
     def test_search_surprise_set_excludes_seed_even_if_answer_surprise(self):
         render = _load_render()

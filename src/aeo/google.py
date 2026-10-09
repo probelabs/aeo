@@ -271,7 +271,12 @@ def product_form_only_of(raw_cfg: dict[str, Any]) -> list[str] | None:
 
 def _task(raw: dict[str, Any] | None) -> dict[str, Any]:
     tasks = (raw or {}).get("tasks") or [{}]
-    return tasks[0] if isinstance(tasks[0], dict) else {}
+    t = tasks[0] if isinstance(tasks[0], dict) else {}
+    if t.get("status_code") is None and isinstance(raw, dict) and raw.get("status_code") not in (None, STATUS_OK):
+        # Request-level failure (e.g. 50000 "Internal Server Error.") comes back with tasks: null;
+        # surface the envelope code/message instead of reporting "None".
+        t = dict(t, status_code=raw.get("status_code"), status_message=raw.get("status_message"))
+    return t
 
 
 def task_status(raw: dict[str, Any] | None) -> int | None:
@@ -489,7 +494,6 @@ def fetch_with_retries(
         try:
             r = client.post(path, [payload])
         except RuntimeError as e:
-            codes.append(None)
             r = {"tasks": [{"status_code": None, "status_message": str(e)}]}
         budget.add(_call_cost(r))
         codes.append(task_status(r))
@@ -530,6 +534,7 @@ def run_google_layer(
     log: Callable[[str], None] = _log_default,
     sleep: Callable[[float], None] = time.sleep,
     reuse_raw: bool = False,
+    retry_failed: bool = False,
 ) -> dict[str, Any] | None:
     """Fetch every google_targets / google_watch search and write google.json + google.md.
 
@@ -568,8 +573,14 @@ def run_google_layer(
     def job(c: dict[str, Any]) -> None:
         q, kind = c["search"], c["kind"]
         rp = raw_path(q["id"], kind)
-        if reuse_raw:
-            r = json.loads(rp.read_text(encoding="utf-8")) if rp.exists() else None
+        prev = None
+        if (reuse_raw or retry_failed) and rp.exists():
+            try:
+                prev = json.loads(rp.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                prev = None
+        if reuse_raw or (retry_failed and usable(prev)):
+            r = prev
             codes, capped = [task_status(r)] if r else [], False
         else:
             path, payload = _payload(q, kind, c["depth"], s)
@@ -621,6 +632,7 @@ def run_google_layer(
         "estimate": est,
         "cost_usd": round(budget.spent, 4),
         "api_calls": budget.calls,
+        **_prior_spend(out, budget, retry_failed),
         "searches": searches,
     }
     doc["summary"] = summarize(doc)
@@ -630,6 +642,22 @@ def run_google_layer(
     write_google_doc(doc, out)
     log(f"google: wrote {out / 'google.json'} (spent ${doc['cost_usd']:.3f} in {doc['api_calls']} call(s))")
     return doc
+
+
+def _prior_spend(out: Path, budget: Budget, retry_failed: bool) -> dict[str, Any]:
+    """--retry-failed keeps earlier good responses; fold the earlier run's spend into the totals."""
+    if not retry_failed:
+        return {}
+    try:
+        prev = json.loads((out / "google.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    pc, pn = float(prev.get("cost_usd") or 0), int(prev.get("api_calls") or 0)
+    return {
+        "cost_usd": round(pc + budget.spent, 4),
+        "api_calls": pn + budget.calls,
+        "retry_failed": {"cost_usd": round(budget.spent, 4), "api_calls": budget.calls, "previous_cost_usd": pc, "previous_api_calls": pn},
+    }
 
 
 def summarize(doc: dict[str, Any]) -> dict[str, Any]:

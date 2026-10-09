@@ -246,6 +246,11 @@ def render(run: Path) -> str:
     brand = os.environ.get("AEO_BRAND") or ws_brand or "Tyk"
     if ws_brand:
         brand = ws_brand
+    domain = ""
+    for doc in docs.values():
+        domain = str((doc.get("workspace") or {}).get("domain") or "")
+        if domain:
+            break
     vendor_store = load_vendor_store(vendors_raw)
     alias_map = seed_alias_map(
         brand, aliases, competitors, vendor_store.values(), competitor_aliases=competitor_aliases
@@ -280,12 +285,12 @@ def render(run: Path) -> str:
     parts = []
     parts.append("<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>")
     parts.append("<meta name='viewport' content='width=device-width, initial-scale=1'>")
-    parts.append("<title>Tyk · AEO report</title><style>")
+    parts.append(f"<title>{esc(brand)} · AEO report</title><style>")
     parts.append(CSS)
     parts.append("</style></head><body>")
-    parts.append("<header class='top'><div class='top-brand'><span class='wordmark'>Tyk</span>")
-    parts.append("<span class='domain'>tyk.io</span></div>")
-    parts.append(f"<div class='top-meta'><span class='pill'>tyk100-20260901</span>")
+    parts.append(f"<header class='top'><div class='top-brand'><span class='wordmark'>{esc(brand)}</span>")
+    parts.append(f"<span class='domain'>{esc(domain)}</span></div>")
+    parts.append(f"<div class='top-meta'><span class='pill'>{esc(run.name)}</span>")
     parts.append(f"<span class='pill'>{n_cells} cells</span></div></header><main>")
 
     parts.append("<section class='method'>")
@@ -364,9 +369,9 @@ def render(run: Path) -> str:
     parts.append("<section class='hero'>")
     for lab, val, hint in (
         ("Mention (S)", pct(mention_s), f"{sm} / {sc} search-arm names"),
-        ("Recommend (S)", pct(recommend_s), "of Tyk hits that were actually pushed"),
-        ("First pick (S)", pct(first_s), "of Tyk hits that led the list"),
-        ("Warn/reject (S)", pct(warn_s), "of Tyk hits with a caveat or no"),
+        ("Recommend (S)", pct(recommend_s), f"of {esc(brand)} hits that were actually pushed"),
+        ("First pick (S)", pct(first_s), f"of {esc(brand)} hits that led the list"),
+        ("Warn/reject (S)", pct(warn_s), f"of {esc(brand)} hits with a caveat or no"),
         (
             "Surprises",
             str(surprise_mentions),
