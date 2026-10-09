@@ -16,6 +16,18 @@
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },
+    "brand_match": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "product_form_only": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Brand/alias terms that are ordinary words (e.g. Proof). Matched case-sensitively and only in clear product form (Proof (reqproof.com), tools like Proof, Try Proof); never proof / proof of / Proof assistants / glossary or table labels. Omit to use the matcher default (just 'proof')."
+        }
+      },
+      "description": "How the deterministic brand matcher (aeo.mention) treats ambiguous brand names."
+    },
     "competitors": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 },

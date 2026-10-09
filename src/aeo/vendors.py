@@ -20,7 +20,14 @@ import re
 from collections import Counter
 from typing import Any, Iterable
 
-from aeo.mention import unique_terms, word_boundary_pattern
+from aeo.mention import (
+    is_bare_proof_term,
+    proof_product_mentioned,  # noqa: F401  (re-exported for older scripts)
+    resolve_product_form_only,
+    unique_terms,
+    vendor_name_is_product,
+    word_boundary_pattern,
+)
 
 VENDOR_ROLES = ("recommend", "mention", "warn", "reject", "aside")
 ARMS = ("knowledge", "search")
@@ -280,12 +287,17 @@ def is_brand_vendor(name: str, brand: str, aliases: Iterable[str]) -> bool:
     key = normalize_vendor_key(raw)
     if key and key in {normalize_vendor_key(t) for t in terms if normalize_vendor_key(t)}:
         return True
+    strict = resolve_product_form_only(brand, terms)
+    strict_keys = {t.lower() for t in strict}
     for term in terms:
         token = term.strip()
-        if len(token) < 3:
+        if len(token) < 3 or is_bare_proof_term(token) or token.lower() in strict_keys:
             continue
         if word_boundary_pattern(token).search(raw):
             return True
+    context = [t for t in terms if t.lower() not in strict_keys]
+    if any(vendor_name_is_product(raw, term, context) for term in strict):
+        return True
     return False
 
 

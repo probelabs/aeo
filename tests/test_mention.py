@@ -98,5 +98,48 @@ class MentionTests(unittest.TestCase):
         self.assertEqual(vendors, [])
 
 
+
+    def test_proof_product_name_counts_when_brand_is_proof(self):
+        aliases = ["ReqProof", "reqproof", "reqproof.com"]
+        self.assertEqual(
+            extract_brand_mentions("Try Proof for MC/DC coverage.", "Proof", aliases),
+            ["Proof"],
+        )
+        self.assertEqual(
+            extract_brand_mentions(
+                "Proof (reqproof.com) keeps agents inside approved requirements.",
+                "Proof",
+                aliases,
+            ),
+            ["reqproof.com", "Proof"],
+        )
+        self.assertIn(
+            "ReqProof",
+            extract_brand_mentions("tools such as ReqProof", "Proof", aliases),
+        )
+
+    def test_generic_proof_does_not_count_as_product(self):
+        aliases = ["ReqProof", "reqproof", "reqproof.com"]
+        brand = "Proof"
+        negatives = [
+            "A mathematical proof of the claim follows.",
+            "social proof and a proof point",
+            "the burden of proof",
+            "Proof that the change works",
+            "Proof the tests check something",
+            "Proof or exhaustive check",
+            "Proof assistants check the kernel",
+            "Proof-of-concept exists",
+            "\u201cProof\u201d needs a defined scope.",
+            "https://proof.com/docs",
+            "https://example.com/?q=proof",
+        ]
+        for text in negatives:
+            self.assertEqual(
+                extract_brand_mentions(text, brand, aliases),
+                [],
+                msg=text,
+            )
+
 if __name__ == "__main__":
     unittest.main()
