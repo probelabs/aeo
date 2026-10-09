@@ -137,8 +137,14 @@ def _rank_word(rank: Any) -> str:
     return f"#{rank}" if rank else "not in top 100"
 
 
-def _rank_word_depth(rank: Any, depth: Any) -> str:
-    return f"#{rank}" if rank else f"not in top {depth or 100}"
+def _rank_word_depth(rank: Any, depth: Any, seen: Any = None) -> str:
+    if rank:
+        return f"#{rank}"
+    depth = int(depth or 100)
+    # Google sometimes returns one page even at depth 100; don't claim "not in top 100" off 9 results.
+    if isinstance(seen, int) and seen < depth:
+        return f"not in the {seen} results Google returned"
+    return f"not in top {depth}"
 
 
 def _num(v: Any) -> str:
@@ -240,7 +246,7 @@ def render_google_markdown(doc: dict[str, Any], gsc_doc: dict[str, Any] | None =
         if not s.get("ok"):
             L += [f"Error: {s.get('error')}", ""]
             continue
-        L.append(f"- AI Overview: {'yes' if s.get('aio_present') else 'no'}; {dom} cited: {'**yes**' if s.get('own_cited') else 'no'}; our rank: {_rank_word_depth(s.get('own_rank'), st.get('depth'))}" + (" (partial results)" if s.get("partial") else ""))
+        L.append(f"- AI Overview: {'yes' if s.get('aio_present') else 'no'}; {dom} cited: {'**yes**' if s.get('own_cited') else 'no'}; our rank: {_rank_word_depth(s.get('own_rank'), st.get('depth'), s.get('organic_count'))}" + (" (partial results)" if s.get("partial") else ""))
         if gsc_words(by_gsc.get(g.norm_query(x["query"]))):
             L.append(f"- {gsc_words(by_gsc.get(g.norm_query(x['query'])))}")
         if x.get("delta"):
@@ -267,7 +273,7 @@ def render_google_markdown(doc: dict[str, Any], gsc_doc: dict[str, Any] | None =
                 continue
             L.append(
                 f"| {_md(x['query'])} | {'yes' if s.get('aio_present') else 'no'} | {'**yes**' if s.get('own_cited') else ''} | "
-                f"{_rank_word_depth(s.get('own_rank'), st.get('watch_depth'))} | {_num(gq.get('impressions')) if gq else ''} | {', '.join((s.get('aio_ref_domains') or [])[:4])} | {_md('; '.join(delta_words(x.get('delta'))))} |"
+                f"{_rank_word_depth(s.get('own_rank'), st.get('watch_depth'), s.get('organic_count'))} | {_num(gq.get('impressions')) if gq else ''} | {', '.join((s.get('aio_ref_domains') or [])[:4])} | {_md('; '.join(delta_words(x.get('delta'))))} |"
             )
         L.append("")
     return "\n".join(L).rstrip() + "\n"
@@ -418,7 +424,7 @@ def render_google_html(doc: dict[str, Any], gsc_doc: dict[str, Any] | None = Non
         badges = [
             _badge("AI Overview" if s.get("aio_present") else "no AI Overview", bool(s.get("aio_present"))),
             _badge(f"{dom} cited" if s.get("own_cited") else f"{dom} not cited", bool(s.get("own_cited"))),
-            _badge(f"our rank {_rank_word_depth(s.get('own_rank'), st.get('depth'))}", bool(s.get("own_rank"))),
+            _badge(f"our rank {_rank_word_depth(s.get('own_rank'), st.get('depth'), s.get('organic_count'))}", bool(s.get("own_rank"))),
         ]
         am = x.get("ai_mode") or {}
         if am.get("ok"):
@@ -436,7 +442,7 @@ def render_google_html(doc: dict[str, Any], gsc_doc: dict[str, Any] | None = Non
         if s.get("aio_present"):
             P.append(f"<details><summary>AI Overview text ({len(s.get('aio_text') or '')} chars)</summary><pre>{_e(s.get('aio_text'))}</pre></details>")
             P.append(f"<p><b>AI Overview sources</b> ({len(s.get('aio_references') or [])})</p>" + _refs_html(s.get("aio_references") or []))
-        P.append("<p><b>Top 10 organic</b>" + (f" · our position {_e(_rank_word_depth(s.get('own_rank'), st.get('depth')))}" ) + "</p>" + _top10_html(s.get("top10") or []))
+        P.append("<p><b>Top 10 organic</b>" + (f" · our position {_e(_rank_word_depth(s.get('own_rank'), st.get('depth'), s.get('organic_count')))}" ) + "</p>" + _top10_html(s.get("top10") or []))
         if am.get("ok"):
             P.append(f"<details><summary>AI Mode answer and sources ({len(am.get('references') or [])})</summary><pre>{_e(am.get('text'))}</pre>{_refs_html(am.get('references') or [])}</details>")
         P.append("</article>")
@@ -453,7 +459,7 @@ def render_google_html(doc: dict[str, Any], gsc_doc: dict[str, Any] | None = Non
             own = ' class="own"' if s.get("own_cited") or (s.get("own_rank") or 999) <= 10 else ""
             P.append(
                 f"<tr{own}><td>{_e(x['query'])}</td><td>{'yes' if s.get('aio_present') else 'no'}</td><td>{'yes' if s.get('own_cited') else ''}</td>"
-                f"<td>{_e(_rank_word_depth(s.get('own_rank'), st.get('watch_depth')))}</td><td class=\"n\">{_e(_num(gq.get('impressions')) if gq else '')}</td>"
+                f"<td>{_e(_rank_word_depth(s.get('own_rank'), st.get('watch_depth'), s.get('organic_count')))}</td><td class=\"n\">{_e(_num(gq.get('impressions')) if gq else '')}</td>"
                 f"<td>{_e(', '.join((s.get('aio_ref_domains') or [])[:4]))}</td><td>{_e('; '.join(delta_words(x.get('delta'))))}</td></tr>"
             )
         P.append("</table>")

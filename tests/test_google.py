@@ -222,7 +222,7 @@ class LayerRunTests(unittest.TestCase):
             self.assertEqual(doc["summary"]["watch"]["own_top10"], 1)
             md = render_google_markdown(doc)
             self.assertIn("## Google", md)
-            self.assertIn("not in top 100", md)
+            self.assertIn("not in the 12 results Google returned", md)
             frag = render_layers_html(doc, None)
             self.assertIn('id="google"', frag)
             self.assertIn('class="own"', frag)
@@ -388,3 +388,12 @@ class LiveRunRegressionTests(unittest.TestCase):
             self.assertEqual(doc2["summary"]["watch"]["ok"], 2)
             self.assertEqual(doc2["retry_failed"]["previous_api_calls"], doc1["api_calls"])
             self.assertEqual(doc2["api_calls"], doc1["api_calls"] + len(second.calls))
+
+
+class RankWordingTests(unittest.TestCase):
+    def test_short_serp_does_not_claim_top_100(self):
+        from aeo.layers import _rank_word_depth
+        self.assertEqual(_rank_word_depth(None, 100, 9), "not in the 9 results Google returned")
+        self.assertEqual(_rank_word_depth(None, 100, 100), "not in top 100")
+        self.assertEqual(_rank_word_depth(None, 100), "not in top 100")
+        self.assertEqual(_rank_word_depth(7, 100, 9), "#7")
