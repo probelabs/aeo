@@ -16,6 +16,28 @@
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },
+    "measurement_set": {
+      "type": "object",
+      "required": ["id", "version"],
+      "description": "Frozen questions used to measure change. Exploratory prompts are left out of the hash and reported separately.",
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "integer" },
+        "frozen": { "type": "string" },
+        "question_hash": { "type": "string" },
+        "count": { "type": "integer" },
+        "note": { "type": "string" }
+      }
+    },
+    "brand_facts": {
+      "type": "string",
+      "description": "Short factual description of the product; the judge checks 'described accurately' against it."
+    },
+    "identity_terms": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Extra names, emails or companies the identity canary must never see in an answer."
+    },
     "brand_match": {
       "type": "object",
       "additionalProperties": false,
@@ -71,6 +93,11 @@
             "type": "boolean",
             "default": true,
             "description": "Default true. Never set watch queries to false."
+          },
+          "group": {
+            "type": "string",
+            "enum": ["measurement", "exploratory"],
+            "description": "exploratory = new or reworded question, reported apart from the frozen measurement set. Default measurement."
           }
         }
       }

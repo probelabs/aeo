@@ -34,7 +34,8 @@ from aeo.evidence import (
     union_documents,
     write_document,
 )
-from aeo.parsers import parse_engine
+from aeo.parsers import parse_engine, parse_json_documents
+from aeo.retrieval import browsing_status, build_chain, tool_activity
 from aeo.score import score_arm
 
 
@@ -48,6 +49,7 @@ class CellWork:
     sample_index: int
     engine: str
     arm: str
+    group: str | None = None
 
 
 def find_entry(
@@ -90,6 +92,7 @@ def prompt_entry(
         entry["class"] = prompt["class"]
     if prompt.get("why"):
         entry["why"] = prompt["why"]
+    entry["group"] = "exploratory" if prompt.get("group") == "exploratory" else "measurement"
     if samples > 1:
         entry["sample_index"] = sample_index
     return entry
@@ -141,6 +144,7 @@ def plan_remaining(
                             sample_index=sample_index,
                             engine=engine,
                             arm=arm,
+                            group=prompt.get("group"),
                         )
                     )
     return skipped, jobs
@@ -209,7 +213,9 @@ def execute_cell(
     parsed = parse_engine(work.engine, result.stdout)
     if not parsed.raw_response_text and result.stderr and not result.error:
         parsed.raw_response_text = result.stderr.strip()
-    scored = score_arm(parsed, cfg, error=result.error)
+    scored = score_arm(parsed, cfg, error=result.error,
+                       observed=observe(work.engine, work.arm, result.stdout, parsed.raw_response_text))
+    scored["isolated"] = bool(getattr(inv, "isolation_settings", None))
     entry = prompt_entry(
         {
             "id": work.prompt_id,
@@ -217,12 +223,25 @@ def execute_cell(
             "intent": work.intent,
             "class": work.class_,
             "why": work.why,
+            "group": work.group,
         },
         work.sample_index,
         samples,
     )
     entry["engines"] = {work.engine: {work.arm: scored}}
     return entry
+
+
+def observe(engine: str, arm: str, stdout: str, answer: str) -> dict[str, Any]:
+    """Tool activity, browsing status and retrieval chain from the engine's own event stream."""
+    docs = parse_json_documents(stdout)
+    activity = tool_activity(engine, docs)
+    browsing = browsing_status(activity, parsed_events=bool(docs))
+    out: dict[str, Any] = {"activity": activity, "browsing": browsing}
+    chain = build_chain(engine, docs, answer)
+    if arm == "search" or chain.get("steps"):
+        out["retrieval"] = chain
+    return out
 
 
 def _write_shard(base: dict[str, Any], out: Path, work: CellWork, entry: dict[str, Any]) -> Path:

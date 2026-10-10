@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,10 @@ from aeo.board import (
     _brand_terms,
 )
 from aeo.config import Config, filter_prompts, load_config, starter_config, write_config
-from aeo.engines import build_invocation, format_command
+from aeo.engines import argv_template, build_invocation, cli_version, format_command
+from aeo import isolation
+from aeo.canary import run_canary
+from aeo.measurement import measurement_record, mismatch_message
 from aeo.mention import product_form_only_from_config, rescore_brand_cells
 from aeo.evidence import (
     default_out_path,
@@ -104,6 +108,21 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     p_run.add_argument(
+        "--canary",
+        choices=["require", "skip"],
+        default="require",
+        help=(
+            "Identity canary before answering (default require): ask each engine who the user is "
+            "under the same isolation and stop if the answer names them or the brand. "
+            "AEO_CANARY=skip in the environment also skips it (tests)."
+        ),
+    )
+    p_run.add_argument(
+        "--allow-measurement-change",
+        action="store_true",
+        help="Run even though the config's frozen measurement_set hash no longer matches its questions",
+    )
+    p_run.add_argument(
         "--no-google",
         action="store_true",
         help="Skip the Google (DataForSEO) and Search Console layers for this run",
@@ -139,6 +158,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_board.add_argument("--out-dir", help="Override boards directory")
 
+    p_can = sub.add_parser("canary", help="Ask each engine who the user is, under run isolation; exit 3 on a leak")
+    p_can.add_argument("--config", help="Path to aeo.config.json")
+    p_can.add_argument("--engine", choices=["claude", "codex", "grok", "all"], default="all")
+    p_can.add_argument("--timeout", type=int, default=180)
+
     p_val = sub.add_parser("validate", help="Validate a config or evidence file")
     p_val.add_argument("path")
 
@@ -153,6 +177,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_board(args)
     if args.cmd == "validate":
         return cmd_validate(args)
+    if args.cmd == "canary":
+        return cmd_canary(args)
     if args.cmd == "google":
         return cmd_google(args)
     parser.error("unknown command")
@@ -204,6 +230,7 @@ def _prompt_payload(p: Any) -> dict[str, Any]:
         "intent": p.intent,
         "class": p.class_,
         "why": p.why,
+        "group": p.group,
     }
 
 
@@ -239,12 +266,24 @@ def cmd_run(args: argparse.Namespace) -> int:
             return 1
         prompts = [_prompt_payload(p) for p in selected]
 
+    mset = None if args.prompt else measurement_record(cfg, selected)
+    if mset and not mset["matches"]:
+        print(("WARNING: " if args.allow_measurement_change else "ERROR: ") + mismatch_message(mset), file=sys.stderr, flush=True)
+        if not args.allow_measurement_change:
+            return 2
+
     if args.dry_run:
+        if mset:
+            print(f"# measurement set {mset['id']} v{mset['version']}: {mset['question_hash']} "
+                  f"({'matches' if mset['matches'] else 'CHANGED'}; {mset.get('run_measurement_count')} measurement + "
+                  f"{mset.get('run_exploratory_count')} exploratory questions in this run)")
+        for engine in engines:
+            print(f"# {engine} isolation: {json.dumps(isolation.describe(engine), sort_keys=True)}")
         for p in prompts:
             for engine in engines:
                 for arm in arms:
                     for _ in range(samples):
-                        inv = build_invocation(engine, arm, p["text"], cfg)
+                        inv = build_invocation(engine, arm, p["text"], cfg, make_cwd=False)
                         print(f"# {engine} {arm} ({p['id']})")
                         print(format_command(inv.argv))
                         print()
@@ -265,6 +304,39 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
     if out is None:
         out = default_out_path(cfg, run_id)
+
+    run_meta = doc.setdefault("run", {})
+    if mset:
+        run_meta["measurement_set"] = mset
+    environment = run_meta.setdefault("environment", {})
+    for engine in engines:
+        environment[engine] = engine_environment(cfg, engine, arms, previous=environment.get(engine))
+    if not args.prompt and _canary_mode(args) == "require":
+        leaks = []
+        for engine in engines:
+            rec = canary_with_retries(engine, cfg)
+            environment[engine]["canary"] = rec
+            line = f"canary {engine}: {rec['status']}"
+            if rec["status"] == "leak":
+                line += f" — answer names {', '.join(rec['leaked_terms'])}"
+            elif rec["status"] == "error":
+                line += f" — {rec.get('error') or 'no answer'}"
+            print(("" if rec["status"] == "pass" else "!!! ") + line, file=sys.stderr, flush=True)
+            if rec["status"] != "pass":
+                leaks.append(engine)
+        if leaks:
+            write_document(doc, out, overwrite=True)
+            print(
+                f"!!! IDENTITY CANARY FAILED for {', '.join(leaks)}: the isolated engine could not be shown to "
+                "be free of the user's identity. No answers were collected. See run.environment.<engine>.canary "
+                f"in {out}.",
+                file=sys.stderr,
+                flush=True,
+            )
+            return 3
+    elif not args.prompt:
+        for engine in engines:
+            environment[engine]["canary"] = {"status": "skipped"}
 
     concurrency = int(getattr(args, "concurrency", 1) or 1)
     doc, _recovered = recover_shards(doc, out)
@@ -291,6 +363,52 @@ def cmd_run(args: argparse.Namespace) -> int:
     _run_layers_after(cfg, out, args)
     print(out)
     return 0
+
+
+def _canary_mode(args: argparse.Namespace) -> str:
+    if os.environ.get("AEO_CANARY", "").strip().lower() == "skip":
+        return "skip"
+    return getattr(args, "canary", "require") or "require"
+
+
+def canary_with_retries(engine: str, cfg: Config, attempts: int = 3) -> dict[str, Any]:
+    rec: dict[str, Any] = {}
+    for _ in range(max(1, attempts)):
+        rec = run_canary(engine, cfg)
+        if rec["status"] != "error":
+            break
+    return rec
+
+
+def engine_environment(cfg: Config, engine: str, arms: list[str], previous: dict | None = None) -> dict[str, Any]:
+    """Versions and settings an engine ran with, for run metadata and drift warnings."""
+    cli = cfg.cli_path(engine)
+    rec: dict[str, Any] = {
+        "cli": cli,
+        "cli_version": cli_version(cli),
+        "argv": {arm: argv_template(engine, arm, cfg) for arm in ("knowledge", "search")},
+        "isolation": isolation.describe(engine),
+    }
+    if previous and previous.get("cli_version") and previous.get("cli_version") != rec["cli_version"]:
+        rec["cli_version_at_start"] = previous.get("cli_version_at_start") or previous.get("cli_version")
+    return rec
+
+
+def cmd_canary(args: argparse.Namespace) -> int:
+    try:
+        cfg = _resolve_config(args.config)
+    except (FileNotFoundError, KeyError, ValueError) as exc:
+        print(f"config error: {exc}", file=sys.stderr)
+        return 1
+    engines = list(cfg.engines) if args.engine == "all" else [args.engine]
+    results = {}
+    for engine in engines:
+        results[engine] = run_canary(engine, cfg, timeout=args.timeout)
+        rec = results[engine]
+        print(f"{engine}: {rec['status']}" + (f" (names {', '.join(rec['leaked_terms'])})" if rec["leaked_terms"] else "")
+              + (f" ({rec['error']})" if rec.get("error") else ""), file=sys.stderr)
+    print(json.dumps(results, indent=2, ensure_ascii=False))
+    return 3 if any(r["status"] != "pass" for r in results.values()) else 0
 
 
 def _resolve_evidence_files(args: argparse.Namespace) -> list[Path]:

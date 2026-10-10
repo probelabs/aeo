@@ -64,6 +64,12 @@ def main(argv: list[str] | None = None) -> int:
         default=10,
         help="How many risers and fallers to keep (default 10)",
     )
+    parser.add_argument(
+        "--match",
+        choices=["text", "id"],
+        default="text",
+        help="text (default): compare only questions with identical wording; id: old match on question id",
+    )
     args = parser.parse_args(argv)
 
     baseline = load_run(Path(args.baseline))
@@ -85,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         floor=args.floor,
         top_n=args.top,
         top_movers=args.movers,
+        match=args.match,
     )
     if args.out:
         out_dir = Path(args.out)

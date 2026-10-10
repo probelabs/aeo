@@ -133,24 +133,44 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 pip install -e '.[test]'   # optional, pulls jsonschema
 ```
 
+## Identity isolation and the canary
+
+Every answer runs with no user identity, memory, instructions, MCP servers or hooks (`src/aeo/isolation.py`):
+
+- **Claude**: `HOME` is a fresh empty dir per answer (`CLAUDE_CONFIG_DIR` unset). It holds only a link to `~/Library/Keychains`, so the normal keychain login still works and refreshes in place, and a `.claude.json` with the account profile minus name, email and organization name. Claude Code otherwise puts the account email into every session. Flags: `--strict-mcp-config --no-session-persistence --disable-slash-commands`, plus `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`. `--bare` is only used when `ANTHROPIC_API_KEY` is set (it skips the keychain).
+- **Codex**: `CODEX_HOME` is a fresh dir holding a symlink to `~/.codex/auth.json` and a `config.toml` that turns off apps, plugins, memories and hooks. A refreshed login is copied back. Always `--json`. The no-search arm adds `-c web_search="disabled" --disable standalone_web_search`.
+- **Grok**: `GROK_HOME` is a fresh dir holding a symlink to `auth.json`.
+- Working directory: a fresh empty temp dir.
+
+Before collecting answers, `aeo run` asks each engine "What is my name or email, and what do you know about me?" under the same isolation. The run stops with exit code 3 if the answer contains the user's name, handle, company or product (`identity_terms` in the config adds more). The answer is stored in `run.environment.<engine>.canary`. Run it on its own with `aeo canary --engine claude`.
+
+Each answer also records `browsing`: `none` (complete event stream, no tool calls), `searched`, or `unknown` (any other tool call, e.g. a shell `curl`, or a stream we could not read). Only `none` counts as unaided recall.
+
+## Frozen question set
+
+`measurement_set` in the config (`id`, `version`, `question_hash`) freezes the questions used to measure change. `aeo run` exits with code 2 if the questions no longer hash to `question_hash`. New or reworded questions go in `"group": "exploratory"`; they are reported separately and left out of the totals. Change reports compare only questions with identical wording and say how many overlap (`scripts/change_report.py --match id` gives the old id match). `scripts/compare_mapped.py` labels each old→new pair `exact` or `approximate`.
+
 ## Raw CLI flags
 
-Use these if the wrapper is blocked. Never pass `--bare` to Claude (it skips keychain).
+Use these if the wrapper is blocked. They skip isolation, so run them from an empty dir with an empty `HOME` as above.
 
 ```bash
 # Claude
-claude -p --tools "" --output-format json -- "PROMPT"
+claude -p --tools "" --strict-mcp-config --no-session-persistence --disable-slash-commands \
+  --output-format stream-json --verbose -- "PROMPT"
 claude -p --tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch \
   --permission-mode bypassPermissions \
   --settings src/aeo/data/claude-empty-hooks.json \
+  --strict-mcp-config --no-session-persistence --disable-slash-commands \
   --output-format stream-json --verbose -- "PROMPT"
 
 # Grok
-grok -p --disable-web-search --sandbox strict --cwd /tmp/aeo-isolate --no-memory -- "PROMPT"
+grok -p --output-format json --disable-web-search --sandbox strict --cwd /tmp/aeo-isolate --no-memory -- "PROMPT"
 grok -p --output-format json --verbatim --sandbox strict --cwd /tmp/aeo-isolate --no-memory -- "PROMPT"
 
 # Codex
-codex exec --ephemeral --skip-git-repo-check --sandbox read-only -- "PROMPT"
+codex exec --ephemeral --skip-git-repo-check --sandbox read-only --json \
+  -c web_search="disabled" --disable standalone_web_search -- "PROMPT"
 codex exec --ephemeral --skip-git-repo-check --sandbox read-only \
   --json --enable standalone_web_search -- "PROMPT"
 ```

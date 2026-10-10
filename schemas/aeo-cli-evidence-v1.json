@@ -53,7 +53,16 @@
           "items": { "type": "string", "enum": ["claude", "codex", "grok"] }
         },
         "samples_per_arm": { "type": "integer", "minimum": 1 },
-        "comment": { "type": "string" }
+        "comment": { "type": "string" },
+        "measurement_set": {
+          "type": "object",
+          "description": "Frozen question set this run measured (aeo.measurement): id, version, question_hash, declared_hash, matches, counts."
+        },
+        "environment": {
+          "type": "object",
+          "description": "Per engine: cli, cli_version, argv per arm (question replaced by <prompt>), isolation settings and the identity canary result.",
+          "additionalProperties": { "type": "object" }
+        }
       }
     },
     "prompts": {
@@ -105,6 +114,33 @@
         },
         "recommended": { "type": "boolean" },
         "error": { "type": "string" },
+        "brand_cited": { "type": "boolean", "description": "A link to the brand's domain is among the answer's sources." },
+        "browsing": {
+          "type": "string",
+          "enum": ["none", "searched", "unknown"],
+          "description": "none = complete event stream with no search or fetch; searched = search or fetch observed; unknown = cannot be confirmed."
+        },
+        "tool_activity": {
+          "type": "object",
+          "properties": {
+            "tools_available": { "type": ["array", "null"], "items": { "type": "string" } },
+            "tools_used": { "type": "array", "items": { "type": "string" } },
+            "stream_complete": { "type": "boolean" }
+          }
+        },
+        "model": { "type": "string" },
+        "isolated": { "type": "boolean", "description": "Ran in a fresh engine home with no user identity, memory, instructions, MCP or hooks." },
+        "retrieval": {
+          "type": "object",
+          "description": "query -> returned results -> pages opened -> sources cited; brand = where the brand's site appeared or dropped out.",
+          "properties": {
+            "steps": { "type": "array", "items": { "type": "object" } },
+            "results_exposed": { "type": "boolean" },
+            "cited_urls": { "type": "array", "items": { "type": "string" } },
+            "gaps": { "type": "array", "items": { "type": "string" } },
+            "brand": { "type": "object" }
+          }
+        },
         "usage": {
           "type": "object",
           "additionalProperties": false,
@@ -138,6 +174,7 @@
         "class": { "type": "string", "enum": ["watch", "focus"] },
         "why": { "type": "string" },
         "sample_index": { "type": "integer", "minimum": 1 },
+        "group": { "type": "string", "enum": ["measurement", "exploratory"] },
         "engines": {
           "type": "object",
           "additionalProperties": false,

@@ -215,10 +215,11 @@ class ChangeReportTests(unittest.TestCase):
         return baseline, current
 
     def test_brand_rates_and_transitions(self):
+        # Legacy id match: every question on each side counts (match="id").
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             baseline, current = self._pair(tmp)
-            payload = diff_runs(load_run(baseline), load_run(current), brand="Tyk")
+            payload = diff_runs(load_run(baseline), load_run(current), brand="Tyk", match="id")
 
             search = payload["brand_rates"]["overall"]["search"]
             self.assertEqual(search["baseline"]["hits"], 1)
@@ -415,8 +416,8 @@ class ChangeReportTests(unittest.TestCase):
             self.assertIn("New competitors", html)
             self.assertIn("No longer ranking", html)
             self.assertIn("Risers / fallers", html)
-            self.assertIn("Unmatched prompt ids", html)
-            self.assertIn("same roster", html.lower())
+            self.assertIn("Questions on one side only", html)
+            self.assertIn("identical wording", html.lower())
             self.assertIn("floor", html.lower())
 
             json_path, html_path = write_change_report(payload, current)
@@ -639,7 +640,7 @@ class ChangeReportTests(unittest.TestCase):
                     ]
                 },
             )
-            payload = diff_runs(load_run(baseline), load_run(current), brand="Tyk")
+            payload = diff_runs(load_run(baseline), load_run(current), brand="Tyk", match="id")
             self.assertGreater(len(payload["competitors"]["new"]), DEFAULT_TOP_LIST)
             html = render_change_html(payload)
             self.assertIn(f"Showing {DEFAULT_TOP_LIST} of", html)
