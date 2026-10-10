@@ -156,7 +156,8 @@ class HtmlReportTests(unittest.TestCase):
         self.assertIn("knowledge", html.lower())
         self.assertIn("confirmation", html.lower())
         self.assertIn("Searched, no mention", html)
-        self.assertIn("Mention (S)", html)
+        self.assertIn("Named with search", html)
+        self.assertNotIn("Mention (S)", html)
         self.assertIn("Confirm", html)
         self.assertNotIn(">Prebelief<", html)
         legend = html[html.index('class="table-legend"'):html.index('class="prompt-table"')]
@@ -165,7 +166,7 @@ class HtmlReportTests(unittest.TestCase):
         self.assertIn("prompt-row", html)
         payload = build_report_payload(merge_docs([a]))
         ov = payload["overall"]
-        self.assertIn(f"{int(ov['search_mentions'])} / {int(ov['search_cells'])}", html)
+        self.assertIn(f"{int(ov['search_mentions'])} of {int(ov['search_cells'])} answers", html)
         self.assertIn(str(int(ov["prebelief"])), html)
         self.assertIn(str(int(ov["discovery"])), html)
         self.assertIn(str(int(ov["mention_without_search"])), html)

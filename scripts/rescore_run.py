@@ -9,6 +9,13 @@ from each cell's stored raw_response_text (no queries are re-run), and writes
 RUN_DIR/<engine>.<suffix>.json plus RUN_DIR/board.<suffix>.json (counts by
 engine x arm, every flipped cell, and the deterministic aeo board on the
 rescored evidence). Originals are never modified.
+
+With --in-place the rescored evidence replaces RUN_DIR/<engine>.json (the
+original is first copied to <engine>.json.bak-prerescore, once), so later
+steps (judge, render, change report) read strict hits AND matching summary
+rates (mention_rate_knowledge / mention_rate_search / search_rate). The
+old per-run rescore_brand.py flipped the cell bits but left those totals
+stale.
 """
 from __future__ import annotations
 
@@ -51,6 +58,8 @@ def main() -> int:
     ap.add_argument("run", type=Path)
     ap.add_argument("--config", required=True, help="aeo config JSON (brand, aliases, brand_match)")
     ap.add_argument("--suffix", default="rescored")
+    ap.add_argument("--in-place", action="store_true",
+                    help="overwrite <engine>.json (backup kept as <engine>.json.bak-prerescore)")
     args = ap.parse_args()
     run = args.run.expanduser().resolve()
     cfg = json.loads(Path(args.config).expanduser().read_text())
@@ -115,9 +124,15 @@ def main() -> int:
                         "prompt_id": pn.get("prompt_id"), "engine": eng, "arm": arm,
                         "mentions": cn.get("brand_mentions"),
                     })
-        dst = run / f"{eng}.{args.suffix}.json"
-        if dst.resolve() == src.resolve():
-            raise SystemExit("refusing to overwrite the original evidence")
+        if args.in_place:
+            bak = run / f"{eng}.json.bak-prerescore"
+            if not bak.exists():
+                bak.write_text(src.read_text())
+            dst = src
+        else:
+            dst = run / f"{eng}.{args.suffix}.json"
+            if dst.resolve() == src.resolve():
+                raise SystemExit("refusing to overwrite the original evidence")
         dst.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
         print(f"wrote {dst}  {eng}: " + ", ".join(
             f"{a} {report['by_engine_arm'][eng][a]['old_hits']}->{report['by_engine_arm'][eng][a]['new_hits']}"

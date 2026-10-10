@@ -4,7 +4,7 @@ import tempfile
 import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from aeo import google as g
@@ -21,8 +21,11 @@ class FakeGSC:
     def __init__(self, scale=1.0):
         self.calls = []
         self.scale = scale
-        w = gsc.windows(TODAY)
-        self.period = {w["current"]["start"]: "current", w["previous"]["start"]: "previous"}
+        self.period = {}
+        # run_layers() uses the real clock, so answer for today's windows as well as TODAY's.
+        for day in (TODAY, datetime.now(timezone.utc).date()):
+            w = gsc.windows(day)
+            self.period.update({w["current"]["start"]: "current", w["previous"]["start"]: "previous"})
 
     def __call__(self, site, body):
         self.calls.append((site, body))

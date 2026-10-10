@@ -245,7 +245,8 @@ class JudgeHtmlVendorTests(unittest.TestCase):
             html = render.render(run)
         self.assertIn("Kong", html)
         self.assertIn("Tyk", html)
-        self.assertIn("brand_mentioned", html)
+        self.assertIn("strict brand match", html)
+        self.assertNotIn("brand_mentioned", html)
 
 
 def _load_judge():

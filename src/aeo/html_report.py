@@ -581,7 +581,7 @@ def _render(payload: dict[str, Any]) -> str:
     sm = int(overall.get("search_mentions") or 0)
     sc = int(overall.get("search_cells") or 0)
     metric_cards = [
-        ("Mention (S)", _fmt_pct(mention_rate), f"{sm} / {sc} search-arm mentions · all engines"),
+        ("Named with search", _fmt_pct(mention_rate), f"{sm} of {sc} answers written with search allowed · all engines"),
         ("Search", _fmt_pct(search_rate), f"{int(overall.get('searched') or 0)} searched"),
         ("Confirm", str(int(overall.get("prebelief") or 0)), "typed an incumbent into the search box"),
         ("Discover", str(int(overall.get("discovery") or 0)), "no incumbent in the box"),
@@ -644,7 +644,7 @@ def _render(payload: dict[str, Any]) -> str:
 
     parts.append('<section class="vendors">')
     parts.append("<h2>Vendor fan-out</h2>")
-    parts.append('<p class="blurb">Names typed into the search box (search arm <code>vendors_in_search_queries</code>), ranked.</p>')
+    parts.append('<p class="blurb">Names typed into the search box in the with-search answers, ranked.</p>')
     parts.append('<div class="chips" id="vendor-engines">')
     parts.append('<button type="button" class="chip on" data-engine="all">all</button>')
     for engine in order:
@@ -746,7 +746,7 @@ def _render(payload: dict[str, Any]) -> str:
         )
         parts.append(
             f'<td class="qcell"><button type="button" class="expand" aria-expanded="false" '
-            f'title="search_queries">▸</button>'
+            f'title="Searches typed">▸</button>'
             f'<span class="prompt-q">{_esc(qtext)}</span></td>'
         )
         for engine in order:
@@ -769,15 +769,15 @@ def _render(payload: dict[str, Any]) -> str:
             comps = (row.get("competitor_mentions") or {}).get(engine) or s.get("competitor_mentions") or []
             parts.append(f'<div class="detail-col"><h4>{_esc(_engine_label(engine))}</h4>')
             if qs:
-                parts.append("<p class='k'>search_queries</p><ul>")
+                parts.append("<p class='k'>Searches typed</p><ul>")
                 for qv in qs:
                     parts.append(f"<li><code>{_esc(qv)}</code></li>")
                 parts.append("</ul>")
             else:
-                parts.append("<p class='hint'>no search_queries</p>")
+                parts.append("<p class='hint'>No searches typed</p>")
             if comps:
                 parts.append(
-                    f"<p class='k'>competitor_mentions</p><p>{_esc(', '.join(str(c) for c in comps))}</p>"
+                    f"<p class='k'>Competitors named</p><p>{_esc(', '.join(str(c) for c in comps))}</p>"
                 )
             bm = list((s.get("brand_mentions") or []) or (k.get("brand_mentions") or []))
             if bm:
