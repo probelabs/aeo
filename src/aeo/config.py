@@ -21,9 +21,13 @@ class Prompt:
     class_: str | None = None
     why: str | None = None
     enabled: bool = True
+    # "exploratory" for new or reworded questions reported apart from the frozen set.
+    group: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {"id": self.id, "text": self.text}
+        if self.group:
+            out["group"] = self.group
         if self.intent:
             out["intent"] = self.intent
         if self.class_:
@@ -51,6 +55,11 @@ class Config:
     # brand_match.product_form_only: brand terms that are English words (Proof)
     # and only count in product form. None = mention.py default.
     brand_product_form_only: list[str] | None = None
+    # Frozen question set (aeo.measurement), product facts for the accuracy judge,
+    # and extra identity words the canary must never see in an answer.
+    measurement_set: dict[str, Any] | None = None
+    brand_facts: str | None = None
+    identity_terms: list[str] = field(default_factory=list)
 
     def cli_path(self, engine: str) -> str:
         return self.cli.get(engine, engine)
@@ -75,6 +84,12 @@ class Config:
             out["cli"] = dict(self.cli)
         if self.brand_product_form_only is not None:
             out["brand_match"] = {"product_form_only": list(self.brand_product_form_only)}
+        if self.measurement_set:
+            out["measurement_set"] = dict(self.measurement_set)
+        if self.brand_facts:
+            out["brand_facts"] = self.brand_facts
+        if self.identity_terms:
+            out["identity_terms"] = list(self.identity_terms)
         return out
 
 
@@ -102,6 +117,7 @@ def _prompt_from_raw(raw: dict[str, Any]) -> Prompt:
     why = raw.get("why")
     if why is not None:
         why = str(why)
+    group = raw.get("group")
     return Prompt(
         id=str(raw["id"]),
         text=str(raw["text"]),
@@ -109,6 +125,7 @@ def _prompt_from_raw(raw: dict[str, Any]) -> Prompt:
         class_=class_,
         why=why,
         enabled=bool(enabled),
+        group=str(group) if group else None,
     )
 
 
@@ -138,6 +155,9 @@ def load_config(path: str | Path) -> Config:
         samples_per_arm=int(data.get("samples_per_arm") or DEFAULT_SAMPLES_PER_ARM),
         path=p,
         brand_product_form_only=_product_form_only(data.get("brand_match")),
+        measurement_set=data.get("measurement_set") if isinstance(data.get("measurement_set"), dict) else None,
+        brand_facts=str(data["brand_facts"]) if data.get("brand_facts") else None,
+        identity_terms=[str(t) for t in (data.get("identity_terms") or []) if str(t).strip()],
     )
 
 

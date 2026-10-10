@@ -4,6 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import os
+os.environ.setdefault("AEO_CANARY", "skip")  # no live identity canary in tests (unittest discover skips tests/__init__)
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -47,12 +50,23 @@ class RenderLabelTests(unittest.TestCase):
                          "Proof, ReqProof or reqproof.com")
         self.assertEqual(self.r.brand_terms_words("Tyk", []), "Tyk")
 
-    def test_headline_total_fixed_only_when_hits_match(self):
-        f = self.r.fix_headline_total
-        self.assertEqual(f("Proof was named in only 3 of 396 answers.", 3, 432),
-                         "Proof was named in only 3 of 432 answers.")
-        self.assertEqual(f("Named in 1 of 216 Codex answers.", 3, 432), "Named in 1 of 216 Codex answers.")
-        self.assertEqual(f("Named in 2 of 396 answers.", 3, 432), "Named in 2 of 396 answers.")
+    def test_no_headline_patch_up_counts_come_from_records(self):
+        # The old fix_headline_total rewrote the judge's denominator after the fact.
+        # Now the headline is built from the records and a judge headline with a
+        # wrong count is not shown at all.
+        self.assertFalse(hasattr(self.r, "fix_headline_total"))
+        with tempfile.TemporaryDirectory() as d:
+            run = Path(d) / "run1"
+            run.mkdir()
+            doc = _doc("claude", [("q1", {"knowledge": _cell("Try Jama."), "search": _cell("Use Proof.", True, True)}),
+                                  ("q2", {"knowledge": _cell("x"), "search": _cell("y")})])
+            (run / "claude.json").write_text(json.dumps(doc))
+            (run / "board.json").write_text(json.dumps({"headline": "Proof was named in only 1 of 396 answers.",
+                                                        "actions": []}))
+            out = self.r.render(run)
+        self.assertNotIn("396", out)
+        self.assertIn("Proof was named in 1 of 4 answers", out)
+        self.assertIn("4 answers</span>", out)  # header pill uses the same count
 
     def test_report_has_no_internal_labels(self):
         with tempfile.TemporaryDirectory() as d:

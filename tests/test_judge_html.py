@@ -326,12 +326,16 @@ class JudgeRunCliTests(unittest.TestCase):
             }
         }
         counts, _ = judge.summarize_for_board(Path("/tmp"), {}, docs, {})
-        line = counts.splitlines()[0]
-        self.assertIn("claude: 3 questions.", line)
-        self.assertNotIn("/100", line)
-        self.assertIn("in 0 of 2 answers written from memory", line)
-        self.assertIn("in 1 of 3 answers written with web search", line)
-        self.assertIn("searched the web on 1 of 3", line)
+        lines = counts.splitlines()
+        self.assertIn("TOTAL: 5 answers.", lines[0])
+        self.assertIn("named in 1 of 5 answers", lines[0])
+        claude = next(l for l in lines if l.startswith("claude:"))
+        self.assertIn("claude: 5 answers.", claude)
+        self.assertNotIn("/100", claude)
+        self.assertIn("0 without search of 2 answers confirmed not browsing", claude)
+        self.assertIn("1 with search of 3", claude)
+        self.assertIn("Searched the web on 1 of 3", claude)
+        self.assertIn("codex: not run", counts)
         self.assertNotIn("mention_k", counts)
         self.assertNotIn("0.1828", counts)
         self.assertNotIn("0.1935", counts)

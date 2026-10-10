@@ -10,10 +10,11 @@ from __future__ import annotations
 import html
 import json
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from aeo.measurement import normalize_text
 from aeo.vendors import (
     ARMS,
     classified_query_vendors_for_arm,
@@ -390,18 +391,116 @@ def _judge_fields(judge: dict[str, Any], key: str) -> dict[str, Any] | None:
     return {"stance": stance, "position": position, "quote": rec.get("quote") or ""}
 
 
+def _row_key(row: dict[str, Any]) -> str:
+    return str(row.get("match_key") or row["prompt_id"])
+
+
+def exact_overlap(baseline: RunSnapshot, current: RunSnapshot) -> dict[str, Any]:
+    """Questions whose exact wording (whitespace-normalised) appears on both sides."""
+    b = {normalize_text(r.get("prompt_text") or ""): r for r in baseline.rows if r.get("prompt_text")}
+    c = {normalize_text(r.get("prompt_text") or ""): r for r in current.rows if r.get("prompt_text")}
+    both = [t for t in c if t in b]
+    return {
+        "match": "exact question text",
+        "baseline_questions": len(baseline.rows),
+        "current_questions": len(current.rows),
+        "overlap": len(both),
+        "baseline_only": sorted(b[t]["prompt_id"] for t in b if t not in c),
+        "current_only": sorted(c[t]["prompt_id"] for t in c if t not in b),
+        "renamed_ids": sorted(
+            [b[t]["prompt_id"], c[t]["prompt_id"]] for t in both if b[t]["prompt_id"] != c[t]["prompt_id"]
+        ),
+        "_texts": both,
+    }
+
+
+def restrict_to_texts(snapshot: RunSnapshot, texts: list[str]) -> RunSnapshot:
+    keep = set(texts)
+    rows = []
+    for r in snapshot.rows:
+        t = normalize_text(r.get("prompt_text") or "")
+        if t in keep:
+            rows.append({**r, "match_key": t})
+    return replace(snapshot, rows=rows)
+
+
+def _env_of(snapshot: RunSnapshot) -> dict[str, Any]:
+    env: dict[str, Any] = {}
+    for engine, doc in snapshot.docs.items():
+        rec = ((doc.get("run") or {}).get("environment") or {}).get(engine)
+        if rec:
+            env[engine] = rec
+    return env
+
+
+def settings_drift(baseline: RunSnapshot, current: RunSnapshot, engines: list[str]) -> list[str]:
+    """Plain-English warnings when model/CLI versions or tool settings differ between the runs."""
+    b_env, c_env = _env_of(baseline), _env_of(current)
+    out: list[str] = []
+    for engine in engines:
+        b, c = b_env.get(engine), c_env.get(engine)
+        if not b and not c:
+            continue
+        name = _title_engine(engine)
+        if not b or not c:
+            side = "baseline" if not b else "current"
+            out.append(
+                f"{name}: the {side} run recorded no CLI version, tool settings or identity isolation "
+                "(runs before Oct 10, 2026), so differences may come from the setup rather than from the assistant."
+            )
+            continue
+        if b.get("cli_version") != c.get("cli_version"):
+            out.append(f"{name}: CLI version changed from {b.get('cli_version') or 'unknown'} to {c.get('cli_version') or 'unknown'}.")
+        for arm in ("knowledge", "search"):
+            if (b.get("argv") or {}).get(arm) != (c.get("argv") or {}).get(arm):
+                out.append(f"{name}: the {'no-search' if arm == 'knowledge' else 'search'} settings changed between the runs.")
+        bi = {k: v for k, v in (b.get("isolation") or {}).items() if k != "flags"}
+        ci = {k: v for k, v in (c.get("isolation") or {}).items() if k != "flags"}
+        if bi != ci:
+            out.append(f"{name}: identity isolation settings changed between the runs.")
+    b_models = _models(baseline)
+    c_models = _models(current)
+    for engine in engines:
+        bm, cm = b_models.get(engine), c_models.get(engine)
+        if bm and cm and bm != cm:
+            out.append(f"{_title_engine(engine)}: model changed from {', '.join(sorted(bm))} to {', '.join(sorted(cm))}.")
+    bs = _mset(baseline)
+    cs = _mset(current)
+    if bs and cs and (bs.get("id"), bs.get("question_hash")) != (cs.get("id"), cs.get("question_hash")):
+        out.append("The two runs used different frozen question sets; only questions with identical wording are compared.")
+    return out
+
+
+def _models(snapshot: RunSnapshot) -> dict[str, set[str]]:
+    out: dict[str, set[str]] = {}
+    for row in snapshot.rows:
+        for engine, arms in (row.get("engines") or {}).items():
+            for arm in (arms or {}).values():
+                if isinstance(arm, dict) and arm.get("model"):
+                    out.setdefault(engine, set()).add(str(arm["model"]))
+    return out
+
+
+def _mset(snapshot: RunSnapshot) -> dict[str, Any] | None:
+    for doc in snapshot.docs.values():
+        m = (doc.get("run") or {}).get("measurement_set")
+        if m:
+            return m
+    return None
+
+
 def prompt_transitions(
     baseline: RunSnapshot,
     current: RunSnapshot,
     engines: list[str],
 ) -> dict[str, Any]:
-    base_by = {r["prompt_id"]: r for r in baseline.rows}
-    cur_by = {r["prompt_id"]: r for r in current.rows}
-    matched = [pid for pid in (r["prompt_id"] for r in current.rows) if pid in base_by]
+    base_by = {_row_key(r): r for r in baseline.rows}
+    cur_by = {_row_key(r): r for r in current.rows}
+    matched = [k for k in (_row_key(r) for r in current.rows) if k in base_by]
     # keep baseline-only order for unmatched listing
     unmatched = {
-        "baseline_only": sorted(baseline.prompt_ids - current.prompt_ids),
-        "current_only": sorted(current.prompt_ids - baseline.prompt_ids),
+        "baseline_only": sorted(r["prompt_id"] for k, r in base_by.items() if k not in cur_by),
+        "current_only": sorted(r["prompt_id"] for k, r in cur_by.items() if k not in base_by),
     }
     rows: list[dict[str, Any]] = []
     incomplete: list[dict[str, Any]] = []
@@ -409,9 +508,11 @@ def prompt_transitions(
     stance_changed = position_changed = 0
     judge_both = 0
 
-    for pid in matched:
-        brow = base_by[pid]
-        crow = cur_by[pid]
+    for mkey in matched:
+        brow = base_by[mkey]
+        crow = cur_by[mkey]
+        pid = crow["prompt_id"]
+        bpid = brow["prompt_id"]
         for engine in engines:
             for arm_name in ARMS:
                 barm = _arm_of(brow, engine, arm_name)
@@ -441,9 +542,8 @@ def prompt_transitions(
                 else:
                     kind = "still_miss"
                 counts[kind] += 1
-                key = f"{pid}|{engine}|{arm_name}"
-                bj = _judge_fields(baseline.judge, key)
-                cj = _judge_fields(current.judge, key)
+                bj = _judge_fields(baseline.judge, f"{bpid}|{engine}|{arm_name}")
+                cj = _judge_fields(current.judge, f"{pid}|{engine}|{arm_name}")
                 stance = position = None
                 if kind == "hit_to_hit" and bj and cj:
                     judge_both += 1
@@ -1518,7 +1618,10 @@ def diff_runs(
     floor: int = DEFAULT_FLOOR,
     top_n: int = DEFAULT_TOP_N,
     top_movers: int = DEFAULT_TOP_MOVERS,
+    match: str = "text",
 ) -> dict[str, Any]:
+    """Compare two runs. ``match="text"`` (default) compares only questions whose
+    exact wording appears in both runs; ``match="id"`` is the old id match."""
     brand = (brand or current.brand or baseline.brand or "").strip()
     if not brand:
         raise ValueError("brand is required (--brand or workspace.brand)")
@@ -1528,7 +1631,19 @@ def diff_runs(
         raise ValueError("top_n must be >= 1")
     if top_movers < 1:
         raise ValueError("top_movers must be >= 1")
+    if match not in ("text", "id"):
+        raise ValueError("match must be text or id")
     engines = _engine_order(baseline.docs, current.docs)
+    if match == "text":
+        overlap = exact_overlap(baseline, current)
+        texts = overlap.pop("_texts")
+        baseline = restrict_to_texts(baseline, texts)
+        current = restrict_to_texts(current, texts)
+    else:
+        overlap = {"match": "question id", "baseline_questions": len(baseline.rows),
+                   "current_questions": len(current.rows),
+                   "overlap": len(baseline.prompt_ids & current.prompt_ids)}
+    warnings = settings_drift(baseline, current, engines)
     coverage = engine_coverage(baseline, current)
     comparable = coverage["comparable"]
     rank_engines = comparable or engines
@@ -1568,6 +1683,8 @@ def diff_runs(
         },
         "engines": engines,
         "engine_coverage": coverage,
+        "comparison": overlap,
+        "warnings": warnings,
         "summary": {
             "headline": headline,
             "verdict": interpretation.get("verdict"),
@@ -1591,8 +1708,9 @@ def diff_runs(
         "transitions": transitions,
         "competitors": vendors,
         "methodology": {
-            "same_roster_assumed": True,
-            "match": "prompt_id + engine + arm",
+            "same_roster_assumed": False,
+            "match": ("exact question text + engine + arm" if match == "text" else "prompt_id + engine + arm"),
+            "question_overlap": overlap.get("overlap"),
             "unmatched_prompt_ids": transitions["unmatched_prompt_ids"],
             "incomplete_cells": transitions["incomplete_cells"],
             "incomplete_cell_count": len(transitions["incomplete_cells"]),
@@ -1602,7 +1720,7 @@ def diff_runs(
             "compared_engines": comparable,
             "engine_coverage": coverage,
             "notes": [
-                "Same roster is assumed; unmatched prompt_ids are listed, not scored in transitions.",
+                "Only questions with identical wording on both sides are compared (rates, transitions and vendor counts); the rest are listed, not scored.",
                 "Mention rates skip error / missing cells. Those cells are listed as incomplete.",
                 "Brand hits are deterministic brand_mentioned. Stance/position only when judge.json exists on both sides of a hit→hit.",
                 "Vendor counts prefer vendors_judged.json (LLM ∪ regex) per cell; otherwise regex competitor_mentions / vendors_in_search_queries.",
@@ -1895,6 +2013,20 @@ def render_change_html(payload: dict[str, Any]) -> str:
     bsrc = (methodology.get("vendor_source") or {}).get("baseline") or baseline.get("vendor_source")
     csrc = (methodology.get("vendor_source") or {}).get("current") or current.get("vendor_source")
 
+    comp = payload.get("comparison") or {}
+    if comp:
+        parts.append("<aside class='gap-banner'>")
+        parts.append(
+            f"<p><b>Compared on {int(comp.get('overlap') or 0)} questions with identical wording</b> "
+            f"(baseline has {int(comp.get('baseline_questions') or 0)}, current has "
+            f"{int(comp.get('current_questions') or 0)}). Questions on one side only are listed below, not scored.</p>"
+            if comp.get("match") == "exact question text"
+            else f"<p><b>Matched by question id</b> ({int(comp.get('overlap') or 0)} ids on both sides). "
+            "Wording may differ, so treat this as approximate.</p>"
+        )
+        for w in payload.get("warnings") or []:
+            parts.append(f"<p><b>Settings differ.</b> {_esc(w)}</p>")
+        parts.append("</aside>")
     if skipped or added_eng:
         parts.append("<aside class='gap-banner'>")
         if skipped:
@@ -1974,7 +2106,8 @@ def render_change_html(payload: dict[str, Any]) -> str:
     parts.append("<p class='eyebrow'>Methodology</p>")
     parts.append("<h1>What this diff measures</h1>")
     parts.append(
-        "<p>Same roster assumed. Answers match on question id, assistant and with/without search. "
+        "<p>Answers match on exact question wording, assistant and with/without search; questions "
+        "whose wording differs are not compared. "
         "Brand hits use the strict brand matcher on each stored answer. "
         "Competitor names prefer the LLM vendor pass (LLM ∪ regex) and fall back "
         "to the competitor and search-box vendor lists stored with each answer. "
@@ -1989,7 +2122,7 @@ def render_change_html(payload: dict[str, Any]) -> str:
     bo = unmatched.get("baseline_only") or []
     co = unmatched.get("current_only") or []
     parts.append(
-        "<article><h3>Unmatched prompt ids</h3>"
+        "<article><h3>Questions on one side only</h3>"
         f"<p>Baseline only: <b>{len(bo)}</b>. Current only: <b>{len(co)}</b>. "
         "They are listed, not scored in transitions.</p>"
         + (

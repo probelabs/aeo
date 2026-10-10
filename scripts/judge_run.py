@@ -9,7 +9,7 @@ Config `competitors` are alias hints, not a ceiling.
 """
 from __future__ import annotations
 
-import json, os, re, subprocess, sys
+import json, os, re, shutil, subprocess, sys, tempfile
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -18,6 +18,9 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from aeo import isolation  # noqa: E402
+from aeo.counts import answer_records, board_count_lines, summarize  # noqa: E402
+from aeo.counts import count_problems as shared_count_problems  # noqa: E402
 from aeo.vendors import (  # noqa: E402
     annotate_vendor_cell,
     completed_cells,
@@ -39,7 +42,16 @@ stance: recommend | mention | warn | reject
 position: first | among | last | aside
 ahead: array of vendor names ranked above {brand} (empty if first or aside)
 quote: <=40 words copied from the answer (the testimony)
+accurate: true | false | null
+accuracy_note: <=25 words, what was right or wrong about {brand}
 confidence: number 0 to 1
+
+accurate: true if everything the answer says about {brand} agrees with the FACTS;
+false if it says something about {brand} that contradicts the FACTS or invents a
+capability; null if it says too little about {brand} to tell, or no FACTS are given.
+
+FACTS about {brand}:
+{facts}
 
 Definitions:
 - recommend: pushed as something to use
@@ -68,7 +80,9 @@ Return ONLY JSON:
   ]
 }}
 Rules:
-- The counts are exact. Use only them; never estimate or round them up into a percentage of "answers".
+- The counts are exact. Use only them; never estimate or round them up into a percentage of "answers". The TOTAL line is the whole run; never add engines up yourself.
+- Keep "named", "linked to the site", "recommended" and "described accurately" apart. Do not call an answer that only names {brand} a recommendation.
+- "Without search" counts only answers where browsing was confirmed off. Never present answers whose browsing is unknown as recall from memory.
 - Write for a busy founder, not an analyst. Plain English only.
   - Never write field or label names such as mention_k, mention_s, search_rate, knowledge_trap, search_likely, product_fit, prompt ids, or any snake_case word.
   - Never write raw ratios or decimals such as 0/52, 1/93 or 0.172. Say it in words: "none of the 93 Codex answers", "1 of 372 answers", "Codex searched the web for almost every question".
@@ -194,20 +208,48 @@ def normalize_hit(doc: dict) -> dict | None:
         conf = float(doc.get("confidence") or 0)
     except (TypeError, ValueError):
         conf = 0.0
+    acc = doc.get("accurate")
+    if isinstance(acc, str):
+        acc = {"true": True, "false": False}.get(acc.strip().lower())
     return {
         "stance": stance,
         "position": position,
         "ahead": [str(x) for x in ahead][:8],
         "quote": quote,
+        "accurate": acc if isinstance(acc, bool) else None,
+        "accuracy_note": " ".join(str(doc.get("accuracy_note") or "").split())[:240],
         "judge": "claude",
         "confidence": max(0.0, min(1.0, conf)),
     }
 
 
 def claude_json(prompt: str, timeout: int = 120) -> dict | None:
-    cmd = ["claude", "-p", "--tools", "", "--output-format", "json", "--", prompt]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    """The judge runs under the same isolation as the measured answers, so the
+    user's memory, instructions and account never colour a verdict."""
+    iso = isolation.prepare("claude")
+    cwd = Path(tempfile.mkdtemp(prefix="aeo-isolate-judge-"))
+    cmd = ["claude", "-p", "--tools", "", *isolation.CLAUDE_ISOLATION_FLAGS, *iso.extra_argv,
+           "--output-format", "json", "--", prompt]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=iso.env,
+                              cwd=str(cwd), stdin=subprocess.DEVNULL)
+    finally:
+        iso.cleanup()
+        shutil.rmtree(cwd, ignore_errors=True)
     return parse_json_blob(proc.stdout or proc.stderr or "")
+
+
+def brand_facts() -> str:
+    """Product facts for the accuracy judge, from the config's brand_facts."""
+    path = os.environ.get("AEO_CONFIG")
+    if path and Path(path).expanduser().exists():
+        try:
+            facts = json.loads(Path(path).expanduser().read_text()).get("brand_facts")
+        except (OSError, ValueError):
+            facts = None
+        if facts:
+            return str(facts)
+    return "(none given)"
 
 
 def answer_text(raw: str) -> str:
@@ -258,7 +300,7 @@ def claude_extract_vendors(
 
 def claude_judge(query: str, answer: str) -> dict | None:
     text = answer_text(answer)
-    prompt = JUDGE_PROMPT.format(brand=BRAND, query=query.strip(), answer=text.strip()[:8000])
+    prompt = JUDGE_PROMPT.format(brand=BRAND, facts=brand_facts(), query=query.strip(), answer=text.strip()[:8000])
     for _ in range(2):
         try:
             doc = claude_json(prompt)
@@ -357,32 +399,17 @@ def jargon_problems(brief: dict) -> list[str]:
     return sorted(set(found))
 
 
-def engine_rate_line(doc: dict, engine: str) -> str:
-    """Board counts for one engine, derived from the cells' brand_mentioned flags.
+def count_summary(docs: dict, store: dict) -> dict:
+    """The one count summary (aeo.counts) shared with the HTML report."""
+    return summarize(answer_records(docs or {}, store or {}))
 
-    The doc-level mention_rate_* fields are written once by the runner and are not
-    refreshed when cells are rescored (e.g. with the strict brand matcher), so the
-    board must not trust them. Count completed (non-error) cells directly instead.
-    """
-    prompts = doc.get("prompts") or []
-    n_k = hit_k = n_s = hit_s = searched = 0
-    for pr in prompts:
-        arms = (pr.get("engines") or {}).get(engine) or {}
-        k = arms.get("knowledge")
-        s = arms.get("search")
-        if isinstance(k, dict) and not k.get("error"):
-            n_k += 1
-            hit_k += bool(k.get("brand_mentioned"))
-        if isinstance(s, dict) and not s.get("error"):
-            n_s += 1
-            hit_s += bool(s.get("brand_mentioned"))
-            searched += bool(s.get("searched"))
 
-    return (
-        f"{engine}: {len(prompts)} questions. Named the brand in {hit_k} of {n_k} answers "
-        f"written from memory and in {hit_s} of {n_s} answers written with web search allowed. "
-        f"Actually searched the web on {searched} of {n_s} questions."
-    )
+def count_problems(brief: dict, summary: dict) -> list[str]:
+    """'N of M answers' phrases in the board text that do not match the shared counts."""
+    parts = [str(brief.get("headline") or "")]
+    for a in brief.get("actions") or []:
+        parts += [str(a.get(k) or "") for k in ("title", "why", "do")]
+    return shared_count_problems(parts, summary)
 
 
 def summarize_for_board(
@@ -393,6 +420,21 @@ def summarize_for_board(
 ) -> tuple[str, str]:
     counts = []
     samples = []
+    loaded: dict = {}
+    for e in ENGINES:
+        if docs and e in docs:
+            loaded[e] = docs[e]
+        elif (run / f"{e}.json").exists():
+            loaded[e] = load_json(run / f"{e}.json")
+    summary = count_summary(loaded, store)
+    counts.extend(board_count_lines(summary, BRAND))
+    f = summary["funnel"]
+    if f["answers"]:
+        counts.append(
+            f"Retrieval chain on search-allowed answers: searched on {f['searched']}; {BRAND}'s site was in the "
+            f"returned results {f['in_results']} times (results recorded on {f['results_recorded']}), opened "
+            f"{f['opened']} times, linked in {f['cited']} answers, {BRAND} named in {f['named']}."
+        )
     ahead_c = Counter()
     stance_c = Counter()
     pos_c = Counter()
@@ -405,7 +447,6 @@ def summarize_for_board(
             if not fp.exists():
                 continue
             doc = load_json(fp)
-        counts.append(engine_rate_line(doc, e))
         for pr in doc.get("prompts") or []:
             why = pr.get("why") or pr.get("class") or "?"
             arms = (pr.get("engines") or {}).get(e) or {}
@@ -452,6 +493,7 @@ def summarize_for_board(
 def board_judge(run: Path, store: dict, docs: dict | None = None) -> dict | None:
     vstore = load_vendor_store(load_store(run / "vendors_judged.json"))
     counts, samples = summarize_for_board(run, store, docs, vstore)
+    summary = count_summary(docs or {}, store)
     prompt = BOARD_PROMPT.format(
         brand=BRAND, counts=counts, samples=samples or "(none)", search_evidence=search_evidence(docs)
     )
@@ -478,14 +520,20 @@ def board_judge(run: Path, store: dict, docs: dict | None = None) -> dict | None
             continue
         best = {"headline": str(doc.get("headline") or "")[:320], "actions": clean, "judge": "claude"}
         bad = jargon_problems(best)
-        if not bad:
+        wrong = count_problems(best, summary)
+        if not bad and not wrong:
             return best
-        best["jargon"] = bad
-        ask = prompt + (
-            "\n\nYour previous answer used internal labels or raw ratios: "
-            + ", ".join(bad[:20])
-            + ". Rewrite it in plain English with none of them."
-        )
+        if bad:
+            best["jargon"] = bad
+        if wrong:
+            best["count_problems"] = wrong
+        fix = []
+        if bad:
+            fix.append("used internal labels or raw ratios: " + ", ".join(bad[:20]))
+        if wrong:
+            fix.append("stated counts that are not in COUNTS: " + ", ".join(wrong[:10])
+                       + ". Copy counts exactly from COUNTS (TOTAL line for the whole run)")
+        ask = prompt + "\n\nYour previous answer " + "; and ".join(fix) + ". Rewrite it."
     return best
 
 
@@ -626,7 +674,8 @@ def main(argv: list[str]) -> int:
             if not doc:
                 continue
             for h in hits(doc, e):
-                if h["key"] in store and isinstance(store[h["key"]], dict) and store[h["key"]].get("stance"):
+                prev = store.get(h["key"])
+                if isinstance(prev, dict) and prev.get("stance") and "accurate" in prev:
                     continue
                 todo.append(h)
         print(f"to_judge {len(todo)} already {len(store)}", flush=True)

@@ -10,6 +10,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from aeo.counts import answer_records, count_problems, headline as count_headline, summarize  # noqa: E402
+from aeo.retrieval import arm_browsing  # noqa: E402
 from aeo.vendors import (  # noqa: E402
     classified_query_vendors_for_arm,
     classified_vendors_for_arm,
@@ -51,24 +53,6 @@ def brand_terms_words(brand: str, aliases) -> str:
     if len(terms) <= 1:
         return terms[0] if terms else ""
     return ", ".join(terms[:-1]) + " or " + terms[-1]
-
-
-_TOTAL_RE = re.compile(r"\b(\d+) of (\d+) answers\b")
-
-
-def fix_headline_total(headline: str, hits: int, total: int) -> str:
-    """The board judge is an LLM and sometimes states the wrong denominator
-    ("3 of 396 answers" on a 432-answer board). When the sentence states the
-    true hit count, force the true total; leave any other phrasing alone."""
-    if not headline or total <= 0:
-        return headline
-
-    def sub(m: re.Match) -> str:
-        if int(m.group(1)) == hits and int(m.group(2)) != total:
-            return f"{hits} of {total} answers"
-        return m.group(0)
-
-    return _TOTAL_RE.sub(sub, headline)
 
 
 def esc(s: str) -> str:
@@ -120,6 +104,13 @@ def harness_block(
     raw = arm.get("raw_response_text") or ""
     search_qs = arm.get("search_queries") or []
 
+    browsing_note = ""
+    if kind in ("hit", "miss") and arm:
+        b = arm_browsing(engine, arm_name, arm)
+        if arm_name == "knowledge" and b != "none":
+            browsing_note = (" <span class='flag'>browsing unknown: search was not confirmed off, "
+                             "so this does not count as recall from memory</span>" if b == "unknown"
+                             else " <span class='flag'>searched despite search being off</span>")
     if kind == "hit":
         ahead_txt = ", ".join(str(x) for x in ahead)
         head = (
@@ -149,6 +140,8 @@ def harness_block(
             f"<i>not run</i></div>"
         )
 
+    if browsing_note:
+        head = head[: -len("</div>")] + browsing_note + "</div>"
     bits = [f"<div class='harness'>{head}"]
     if search_qs:
         qlines = "\n".join(str(q) for q in search_qs)
@@ -244,67 +237,157 @@ def cell_view(arm: dict | None, j: dict | None, searched_arm: bool, named: list 
     }
 
 
-def rates(docs, judge, rows):
-    out = {}
+def _n_of(a: int, b: int) -> str:
+    return f"{a} of {b}"
+
+
+def summary_section(summary: dict, brand: str, domain: str) -> str:
+    t = summary["total"]
+    site = domain or "the brand's site"
+    cards = [
+        ("Answers", str(t["answers"]),
+         f"{t['errors'] + t['missing']} failed and not counted" if (t["errors"] or t["missing"]) else "every planned answer came back"),
+        ("Named", _n_of(t["named"], t["answers"]),
+         f"{t['named_unaided']} without search · {t['named_with_search']} with search · "
+         f"{t['named_browsing_unknown']} browsing unknown"),
+        ("Linked to " + site, _n_of(t["cited"], t["answers"]), f"answers whose sources include {site}"),
+        ("Described accurately", _n_of(t["accurate"], t["named"]),
+         f"of answers naming {brand} (judge)" + (f"; {t['accuracy_not_judged']} not judged" if t["accuracy_not_judged"] else "")),
+        ("Recommended", _n_of(t["recommended"], t["named"]), f"of answers naming {brand}, pushed as something to use (judge)"),
+    ]
+    out = ["<section class='hero'>"]
+    for lab, val, hint in cards:
+        out.append(f"<article class='metric'><p class='eyebrow'>{esc(lab)}</p>"
+                   f"<p class='metric-n'>{esc(val)}</p><p class='hint'>{esc(hint)}</p></article>")
+    out.append("</section>")
+    ex = summary["groups"].get("exploratory")
+    if ex and ex["planned"]:
+        out.append(
+            f"<p class='hint'><b>Exploratory questions</b> (new or reworded, not in the frozen measurement set, "
+            f"not in the numbers above): {brand} named in {ex['named']} of {ex['answers']} answers, "
+            f"linked in {ex['cited']}, recommended in {ex['recommended']}.</p>"
+        )
+    return "".join(out)
+
+
+def engine_section(summary: dict) -> str:
+    out = ["<h2>Engines</h2><section class='engine-grid'>"]
+    for e, r in summary["by_engine"].items():
+        out.append(f"<article class='engine'><header><h3>{esc(e)}</h3></header>")
+        if r["status"] == "not run":
+            out.append("<p class='notrun'>not run</p><p class='hint'>No answers from this engine in this run.</p></article>")
+            continue
+        if r["status"] == "failed":
+            out.append(f"<p class='notrun'>failed</p><p class='hint'>{r['errors']} answers errored.</p></article>")
+            continue
+        rows = [
+            ("Named without search", r["named_unaided"], r["unaided_answers"],
+             "answers where browsing was confirmed off"),
+            ("Named, browsing unknown", r["named_browsing_unknown"], r["browsing_unknown_answers"],
+             "no-search answers whose browsing could not be confirmed off"),
+            ("Named with search", r["named_with_search"], r["search_answers"], "search-allowed answers"),
+            ("Linked to the site", r["cited"], r["answers"], "all answers"),
+            ("Recommended", r["recommended"], r["answers"], "all answers (judge)"),
+            ("Searched", r["searched"], r["search_answers"], "search-allowed answers that actually searched"),
+        ]
+        for lab, a, b, tip in rows:
+            if lab == "Named, browsing unknown" and not b:
+                continue
+            width = (a / b * 100) if b else 0
+            out.append(f"<div class='stat-line' title='{esc(tip)}'><span>{esc(lab)}</span><span>{a} of {b}</span></div>")
+            out.append(f"<div class='bar'><span class='bar-fill teal' style='width:{width:.1f}%'></span></div>")
+        if r["errors"] or r["missing"]:
+            out.append(f"<p class='hint'>{r['errors'] + r['missing']} answers failed and are not counted.</p>")
+        out.append("</article>")
+    out.append("</section>")
+    return "".join(out)
+
+
+def retrieval_section(summary: dict, records: list[dict], brand: str, domain: str) -> str:
+    f = summary["funnel"]
+    site = domain or "the brand's site"
+    out = [f"<h2>Where {esc(site)} drops out</h2>"]
+    if not f["answers"]:
+        return out[0] + "<p class='hint'>No search-allowed answers in this run.</p>"
+    out.append(
+        "<p class='hint'>For each answer written with search allowed: the searches it ran, whether "
+        f"{esc(site)} was among the results returned, whether a page on it was opened, whether the answer "
+        f"linked to it, and whether it named {esc(brand)}.</p>"
+    )
+    out.append("<table class='funnel'><tr><th>Engine</th><th>Answers</th><th>Searched</th>"
+               "<th>Site in returned results</th><th>Site page opened</th><th>Site linked</th>"
+               f"<th>{esc(brand)} named</th></tr>")
+    for e, r in f["by_engine"].items():
+        if r["results_recorded"]:
+            res = f"{r['in_results']} of {r['results_recorded']}"
+        else:
+            res = "not recorded"
+        opened = str(r["opened"]) if r["chain_recorded"] else "not recorded"
+        out.append(f"<tr><td>{esc(e)}</td><td>{r['answers']}</td><td>{r['searched']}</td><td>{res}</td>"
+                   f"<td>{opened}</td><td>{r['cited']}</td><td>{r['named']}</td></tr>")
+    out.append("</table>")
+    if f["stages"]:
+        stages = ", ".join(f"{esc(k)}: {v}" for k, v in sorted(f["stages"].items(), key=lambda kv: -kv[1]))
+        out.append(f"<p class='hint'>Furthest stage {esc(site)} reached per answer: {stages}.</p>")
+    notes = []
+    if any(r["chain_recorded"] < r["answers"] for r in f["by_engine"].values()):
+        notes.append("Answers stored before Oct 10, 2026 kept only the search queries and the final answer, "
+                     "so returned results and opened pages are not recorded for them.")
+    if "codex" in f["by_engine"]:
+        notes.append("Codex does not expose the result list a search returned, only its queries and opened pages.")
+    for n in notes:
+        out.append(f"<p class='hint'>{esc(n)}</p>")
+    hits = [r for r in records if r.get("funnel") and (r["funnel"].get("in_results") or r["funnel"].get("opened")
+                                                       or r["funnel"].get("cited") or r["funnel"].get("named"))]
+    if hits:
+        out.append("<ul class='funnel-hits'>")
+        for r in hits[:20]:
+            fu = r["funnel"]
+            out.append(f"<li><b>{esc(r['engine'])}</b> · {esc(r['prompt_text'][:140])} — {esc(fu.get('stage') or '')}</li>")
+        out.append("</ul>")
+    return "".join(out)
+
+
+def settings_section(docs: dict) -> str:
+    out = ["<h2>Run settings</h2>"]
+    rows = []
+    mset = None
     for e in ENGINES:
-        rec = fir = wrn = hit_s = hit_k = n_s = n_k = 0
-        for row in rows:
-            arms = row["engines"].get(e) or {}
-            for arm_name, nk in (("knowledge", "k"), ("search", "s")):
-                arm = arms.get(arm_name)
-                if not isinstance(arm, dict) or arm.get("error"):
-                    continue
-                if arm_name == "search":
-                    n_s += 1
-                else:
-                    n_k += 1
-                if not arm.get("brand_mentioned"):
-                    continue
-                if arm_name == "search":
-                    hit_s += 1
-                else:
-                    hit_k += 1
-                j = judge.get(f"{row['prompt_id']}|{e}|{arm_name}") or {}
-                if j.get("stance") == "recommend":
-                    rec += 1
-                if j.get("position") == "first":
-                    fir += 1
-                if j.get("stance") in ("warn", "reject"):
-                    wrn += 1
-        doc = docs.get(e) or {}
-        out[e] = {
-            "n_k": n_k, "n_s": n_s, "hit_k": hit_k, "hit_s": hit_s,
-            "mention_k": (hit_k / n_k) if n_k else 0,
-            "mention_s": (hit_s / n_s) if n_s else 0,
-            "recommend_s": (rec / hit_s) if hit_s else 0,
-            "first_s": (fir / hit_s) if hit_s else 0,
-            "warn_s": (wrn / hit_s) if hit_s else 0,
-            "search_rate": float(doc.get("search_rate") or 0),
-        }
-    return out
-
-
-def _cells(docs: dict):
-    for e in ENGINES:
-        for p in (docs.get(e) or {}).get("prompts") or []:
-            for arm in ("knowledge", "search"):
-                c = ((p.get("engines") or {}).get(e) or {}).get(arm)
-                if isinstance(c, dict) and not c.get("error"):
-                    yield c
-
-
-def brand_hits_total(docs: dict) -> int:
-    return sum(bool(c.get("brand_mentioned")) for c in _cells(docs))
-
-
-def n_cells_answered(docs: dict) -> int:
-    return sum(1 for _ in _cells(docs))
+        doc = docs.get(e)
+        if not doc:
+            continue
+        run = doc.get("run") or {}
+        mset = mset or run.get("measurement_set")
+        env = (run.get("environment") or {}).get(e)
+        if not env:
+            rows.append(f"<tr><td>{esc(e)}</td><td colspan='3'>not recorded (run before Oct 10, 2026: no identity "
+                        "isolation, CLI versions or canary)</td></tr>")
+            continue
+        iso = env.get("isolation") or {}
+        can = env.get("canary") or {}
+        can_txt = can.get("status") or "not run"
+        if can.get("leaked_terms"):
+            can_txt += " (named " + ", ".join(can["leaked_terms"]) + ")"
+        rows.append(f"<tr><td>{esc(e)}</td><td>{esc(env.get('cli_version') or 'unknown')}</td>"
+                    f"<td>{esc(iso.get('home') or 'not isolated')}; auth: {esc(iso.get('auth') or '?')}</td>"
+                    f"<td>{esc(can_txt)}</td></tr>")
+    if rows:
+        out.append("<table class='funnel'><tr><th>Engine</th><th>CLI version</th><th>Isolation</th>"
+                   "<th>Identity canary</th></tr>" + "".join(rows) + "</table>")
+    if mset:
+        out.append(f"<p class='hint'>Measurement set {esc(str(mset.get('id')))} v{esc(str(mset.get('version')))}, "
+                   f"{mset.get('measurement_count')} frozen questions, hash {esc(str(mset.get('question_hash'))[:19])}…"
+                   + ("" if mset.get("matches") else " <b>(changed since it was frozen)</b>") + "</p>")
+    else:
+        out.append("<p class='hint'>No frozen measurement set recorded for this run.</p>")
+    return "".join(out)
 
 
 def render(run: Path) -> str:
     docs, judge, board, vendors_raw = load(run)
     rows = merge_rows(docs)
-    eng_rates = rates(docs, judge, rows)
+    records = answer_records(docs, judge)
+    summary = summarize(records)
     ws_brand, aliases, competitors, competitor_aliases = workspace_from_docs(docs)
     brand = os.environ.get("AEO_BRAND") or ws_brand or "Tyk"
     if ws_brand:
@@ -322,29 +405,6 @@ def render(run: Path) -> str:
         rows, vendor_store, brand=brand, aliases=aliases, alias_map=alias_map
     )
     surprise_mentions = sum(surprise_counts.values())
-    n_cells = sum(len((docs.get(e) or {}).get("prompts") or []) * 2 for e in ENGINES)
-    # overall search mention / recommend / first among search hits
-    sm = sc = rec = fir = wrn = 0
-    for e, r in eng_rates.items():
-        sc += r["n_s"]; sm += r["hit_s"]
-        # recompute rec/first from judge for search only
-    for row in rows:
-        for e in ENGINES:
-            arm = (row["engines"].get(e) or {}).get("search")
-            if not isinstance(arm, dict) or not arm.get("brand_mentioned"):
-                continue
-            j = judge.get(f"{row['prompt_id']}|{e}|search") or {}
-            if j.get("stance") == "recommend":
-                rec += 1
-            if j.get("position") == "first":
-                fir += 1
-            if j.get("stance") in ("warn", "reject"):
-                wrn += 1
-    mention_s = (sm / sc) if sc else 0
-    recommend_s = (rec / sm) if sm else 0
-    first_s = (fir / sm) if sm else 0
-    warn_s = (wrn / sm) if sm else 0
-
     parts = []
     parts.append("<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>")
     parts.append("<meta name='viewport' content='width=device-width, initial-scale=1'>")
@@ -354,7 +414,7 @@ def render(run: Path) -> str:
     parts.append(f"<header class='top'><div class='top-brand'><span class='wordmark'>{esc(brand)}</span>")
     parts.append(f"<span class='domain'>{esc(domain)}</span></div>")
     parts.append(f"<div class='top-meta'><span class='pill'>{esc(run.name)}</span>")
-    parts.append(f"<span class='pill'>{n_cells} cells</span></div></header><main>")
+    parts.append(f"<span class='pill'>{summary['total']['answers']} answers</span></div></header><main>")
 
     parts.append("<section class='method'>")
     parts.append("<p class='eyebrow'>Methodology</p>")
@@ -367,8 +427,9 @@ def render(run: Path) -> str:
     parts.append("<div class='method-grid'>")
     parts.append(
         f"<article><h3>{ARM_LABELS['knowledge']}</h3>"
-        f"<p>Knowledge-only arm: web search forced <b>off</b>. Did the model name "
-        f"<b>{esc(brand)}</b> from memory?</p>"
+        f"<p>Knowledge-only arm: web search switched <b>off</b>. Did the model name "
+        f"<b>{esc(brand)}</b> from memory? Only answers whose event log confirms no search count as "
+        "recall from memory; the rest are shown as <b>browsing unknown</b>.</p>"
         "<p class='ex'><b>Example.</b> Query: “rate limit partner APIs by API key.” "
         "Answer lists Kong and Apigee but never Tyk → <span class='leg-chip miss'>miss</span>. "
         "Answer says “Tyk or Kong…” → <span class='leg-chip men'>mention</span>.</p></article>"
@@ -402,13 +463,15 @@ def render(run: Path) -> str:
     parts.append("</div></section>")
 
     actions = (board or {}).get("actions") or []
-    headline = fix_headline_total((board or {}).get("headline") or "", brand_hits_total(docs), n_cells_answered(docs))
+    board_headline = (board or {}).get("headline") or ""
+    if count_problems([board_headline], summary):
+        board_headline = ""  # the judge stated counts that disagree with the records; show ours only
     parts.append("<section class='actions'>")
-    parts.append("<p class='eyebrow'>Board judge</p>")
-    if headline:
-        parts.append(f"<h1>{esc(headline)}</h1>")
-    else:
-        parts.append("<h1>Top actions from this board</h1>")
+    parts.append("<p class='eyebrow'>Summary</p>")
+    parts.append(f"<h1>{esc(count_headline(summary, brand))}</h1>")
+    if board_headline:
+        parts.append(f"<p class='board-headline'>{esc(board_headline)}</p>")
+    parts.append("<p class='eyebrow'>Board judge actions</p>")
     if actions:
         parts.append("<ol class='action-list'>")
         for i, a in enumerate(actions, 1):
@@ -426,36 +489,10 @@ def render(run: Path) -> str:
         parts.append("<p class='hint'>Board judge has not run yet.</p>")
     parts.append("</section>")
 
-    def pct(x):
-        return f"{x*100:.0f}%"
-
-    parts.append("<section class='hero'>")
-    for lab, val, hint in (
-        ("Named with search", pct(mention_s), f"{sm} of {sc} answers written with search allowed"),
-        ("Recommended (with search)", pct(recommend_s), f"of {esc(brand)} hits that were actually pushed"),
-        ("First pick (with search)", pct(first_s), f"of {esc(brand)} hits that led the list"),
-        ("Warn or reject (with search)", pct(warn_s), f"of {esc(brand)} hits with a caveat or no"),
-        (
-            "Surprises",
-            str(surprise_mentions),
-            f"{len(surprise_counts)} vendor{'' if len(surprise_counts) == 1 else 's'} not on the seed list",
-        ),
-    ):
-        parts.append(f"<article class='metric'><p class='eyebrow'>{lab}</p>")
-        parts.append(f"<p class='metric-n'>{val}</p><p class='hint'>{esc(hint)}</p></article>")
-    parts.append("</section>")
-
-    parts.append("<h2>Engines</h2><section class='engine-grid'>")
-    for e in ENGINES:
-        r = eng_rates.get(e) or {}
-        parts.append(f"<article class='engine'><header><h3>{e}</h3></header>")
-        for lab, key in ((ARM_LABELS["knowledge"], "mention_k"), (ARM_LABELS["search"], "mention_s"), ("Recommend among hits", "recommend_s"), ("First pick among hits", "first_s"), ("Searched", "search_rate")):
-            v = r.get(key) or 0
-            parts.append(f"<div class='stat-line'><span>{lab}</span><span>{pct(v)}</span></div>")
-            parts.append(f"<div class='bar'><span class='bar-fill teal' style='width:{v*100:.1f}%'></span></div>")
-        parts.append("</article>")
-    parts.append("</section>")
-
+    parts.append(summary_section(summary, brand, domain))
+    parts.append(engine_section(summary))
+    parts.append(retrieval_section(summary, records, brand, domain))
+    parts.append(settings_section(docs))
 
     search_vendor_counts = search_box_vendor_counts(
         rows, vendor_store, brand=brand, aliases=aliases, alias_map=alias_map
@@ -699,6 +736,12 @@ max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-s
 .raw-missing{margin:4px 0 0}
 
 .qcell{max-width:520px}
+.notrun{font-size:20px;color:var(--muted);margin:6px 0}
+.flag{color:var(--wrn);font-style:normal}
+.board-headline{color:var(--muted);margin:-8px 0 14px}
+.funnel{border-collapse:collapse;font-size:13px;margin:8px 0}
+.funnel td,.funnel th{border-top:1px solid var(--line);padding:6px 10px;text-align:left}
+.funnel-hits{font-size:13px;color:var(--muted)}
 """
 
 JS = """

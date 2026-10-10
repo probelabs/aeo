@@ -6,6 +6,9 @@ from pathlib import Path
 from aeo import google as g
 from aeo.layers import inject_html, load_layers, render_google_markdown, render_layers_html, run_layers
 
+import os
+os.environ.setdefault("AEO_CANARY", "skip")  # no live identity canary in tests (unittest discover skips tests/__init__)
+
 FX = Path(__file__).resolve().parent / "fixtures" / "google"
 
 

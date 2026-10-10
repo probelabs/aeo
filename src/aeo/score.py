@@ -11,6 +11,7 @@ from aeo.mention import (
     extract_vendors_in_queries,
 )
 from aeo.parsers import ParsedRun
+from aeo.retrieval import brand_funnel, host_matches, urls_in
 from aeo.vendors import expand_competitor_mention_terms
 
 
@@ -19,6 +20,7 @@ def score_arm(
     cfg: Config,
     *,
     error: str | None = None,
+    observed: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     text = parsed.raw_response_text
     brand_mentions = extract_brand_mentions(
@@ -45,6 +47,25 @@ def score_arm(
         # v1: recommended == brand mentioned in answer text (prose or brand-domain URL host).
         "recommended": brand_mentioned,
     }
+    cited = [u for u in urls_in(text) if host_matches(u, cfg.domain)]
+    arm["brand_cited"] = bool(cited)
+    if observed:
+        activity = observed.get("activity") or {}
+        arm["browsing"] = observed.get("browsing") or "unknown"
+        arm["tool_activity"] = {
+            "tools_available": activity.get("tools_available"),
+            "tools_used": list(activity.get("tools_used") or []),
+            "stream_complete": bool(activity.get("stream_complete")),
+        }
+        if activity.get("model"):
+            arm["model"] = str(activity["model"])
+        if observed.get("browsing") == "searched" and not parsed.searched:
+            arm["searched"] = True
+        chain = observed.get("retrieval")
+        if chain is not None:
+            chain = dict(chain)
+            chain["brand"] = brand_funnel(chain, cfg.domain, named=brand_mentioned)
+            arm["retrieval"] = chain
     if error:
         arm["error"] = error
     if parsed.usage:

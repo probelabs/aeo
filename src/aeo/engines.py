@@ -6,9 +6,11 @@ import os
 import shutil
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
+from aeo import isolation
 from aeo.config import Config
 
 # Operational suffix only. Do not add brand, rust, or extra stack words.
@@ -49,6 +51,9 @@ class Invocation:
     argv: list[str]
     prompt: str
     cwd: Path | None = None
+    # Fresh engine home (no identity, memory, instructions, MCP or hooks) per call.
+    isolate: bool = True
+    isolation_settings: dict[str, Any] = field(default_factory=dict)
 
 
 def build_invocation(
@@ -56,10 +61,13 @@ def build_invocation(
     arm: str,
     prompt_text: str,
     cfg: Config,
+    *,
+    make_cwd: bool = True,
+    raw_prompt: bool = False,
 ) -> Invocation:
-    prompt = user_prompt(prompt_text)
+    prompt = prompt_text if raw_prompt else user_prompt(prompt_text)
     cli = cfg.cli_path(engine)
-    isolated = isolate_cwd()
+    isolated = isolate_cwd() if make_cwd else Path(tempfile.gettempdir()) / "aeo-isolate-XXXX"
     if engine == "claude":
         argv = _claude_argv(cli, arm, prompt)
     elif engine == "codex":
@@ -72,9 +80,13 @@ def build_invocation(
 
 
 def _claude_argv(cli: str, arm: str, prompt: str) -> list[str]:
-    # NEVER --bare (skips keychain).
+    # No --bare with subscription auth: it skips the keychain login. Isolation
+    # instead comes from an empty HOME per call (aeo.isolation) plus these flags;
+    # aeo.isolation adds --bare itself when ANTHROPIC_API_KEY is configured.
+    # stream-json on both arms so tool availability and use are always recorded.
+    common = list(isolation.CLAUDE_ISOLATION_FLAGS)
     if arm == "knowledge":
-        return [cli, "-p", "--tools", "", "--output-format", "json", "--", prompt]
+        return [cli, "-p", "--tools", "", *common, "--output-format", "stream-json", "--verbose", "--", prompt]
     settings = str(empty_hooks_path())
     return [
         cli,
@@ -87,12 +99,20 @@ def _claude_argv(cli: str, arm: str, prompt: str) -> list[str]:
         "bypassPermissions",
         "--settings",
         settings,
+        *common,
         "--output-format",
         "stream-json",
         "--verbose",
         "--",
         prompt,
     ]
+
+
+# Codex knowledge arm: web search explicitly off. `web_search = "disabled"` is the
+# config switch for the built-in web search tool; the standalone search feature
+# is disabled too. --json on both arms so every tool call is recorded.
+CODEX_NO_SEARCH = ["-c", 'web_search="disabled"', "--disable", "standalone_web_search"]
+CODEX_SEARCH = ["--enable", "standalone_web_search"]
 
 
 def _codex_argv(cli: str, arm: str, prompt: str) -> list[str]:
@@ -103,9 +123,9 @@ def _codex_argv(cli: str, arm: str, prompt: str) -> list[str]:
         "--skip-git-repo-check",
         "--sandbox",
         "read-only",
+        "--json",
     ]
-    if arm == "search":
-        argv += ["--json", "--enable", "standalone_web_search"]
+    argv += CODEX_SEARCH if arm == "search" else CODEX_NO_SEARCH
     argv += ["--", prompt]
     return argv
 
@@ -116,7 +136,7 @@ def _grok_argv(cli: str, arm: str, prompt: str, cwd: Path) -> list[str]:
     # still works so the search arm can use web_search.
     # Default strict. Stock grok refuses strict when /var/run/docker.sock is a
     # symlink (Docker Desktop). Override with GROK_SANDBOX=workspace when needed.
-    # Pair with GROK_HOME pointing at an MCP-free home (default ~/.grok-aeo-nomcp).
+    # GROK_HOME is a fresh home per call holding only auth (aeo.isolation).
     sandbox = os.environ.get("GROK_SANDBOX") or "strict"
     argv = [
         cli,
@@ -131,9 +151,7 @@ def _grok_argv(cli: str, arm: str, prompt: str, cwd: Path) -> list[str]:
     ]
     if arm == "knowledge":
         argv += ["--disable-web-search"]
-    else:
-        argv += ["--output-format", "json"]
-    argv += ["-p", prompt]
+    argv += ["--output-format", "json", "-p", prompt]
     return argv
 
 
@@ -160,17 +178,18 @@ def run_invocation(inv: Invocation, *, timeout: int = DEFAULT_TIMEOUT) -> ExecRe
             error=f"{inv.engine} CLI not found: {inv.argv[0]}",
         )
     env = os.environ.copy()
-    if inv.engine == "grok":
-        # AEO must not inherit ~/.grok MCP (Chiaro, etc). Copy auth into this home.
-        env["GROK_HOME"] = os.environ.get("GROK_HOME") or str(
-            Path.home() / ".grok-aeo-nomcp"
-        )
     user_sock = Path.home() / ".docker/run/docker.sock"
     if user_sock.exists() and "DOCKER_HOST" not in env:
         env["DOCKER_HOST"] = f"unix://{user_sock}"
+    iso = isolation.prepare(inv.engine, env) if inv.isolate else None
+    argv = list(inv.argv)
+    if iso is not None:
+        env = iso.env
+        argv = argv[:1] + [a for a in iso.extra_argv if a not in argv] + argv[1:]
+        inv.isolation_settings = dict(iso.settings)
     try:
         proc = subprocess.run(
-            inv.argv,
+            argv,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -193,6 +212,30 @@ def run_invocation(inv: Invocation, *, timeout: int = DEFAULT_TIMEOUT) -> ExecRe
         return ExecResult("", "", 124, error=f"{inv.engine} timed out after {timeout}s")
     except OSError as exc:
         return ExecResult("", "", 127, error=f"{inv.engine} failed to start: {exc}")
+    finally:
+        if iso is not None:
+            iso.cleanup()
+        if inv.cwd is not None and inv.cwd.name.startswith("aeo-isolate-"):
+            shutil.rmtree(inv.cwd, ignore_errors=True)
+
+
+def cli_version(cli: str, timeout: int = 20) -> str | None:
+    """`<cli> --version`, first line; None when the CLI is missing or fails."""
+    if shutil.which(cli) is None and not Path(cli).exists():
+        return None
+    try:
+        proc = subprocess.run([cli, "--version"], capture_output=True, text=True, timeout=timeout,
+                              stdin=subprocess.DEVNULL, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    out = (proc.stdout or proc.stderr or "").strip().splitlines()
+    return out[0].strip() if out else None
+
+
+def argv_template(engine: str, arm: str, cfg: Config) -> list[str]:
+    """The flags used for an engine × arm, with the question replaced by <prompt>."""
+    inv = build_invocation(engine, arm, "<prompt>", cfg, make_cwd=False)
+    return [("<prompt>" if a == inv.prompt else a) for a in inv.argv]
 
 
 def write_temp_hooks_copy() -> Path:

@@ -48,10 +48,29 @@ class DryRunTests(unittest.TestCase):
         self.assertIn("--ephemeral", k)
         self.assertIn("--skip-git-repo-check", k)
         self.assertIn("--sandbox read-only", k)
-        self.assertNotIn("standalone_web_search", k)
+        # No-search arm: search explicitly off, and --json so tool activity is recorded.
+        self.assertIn("--json", k)
+        self.assertIn("web_search=\"disabled\"", k)
+        self.assertIn("--disable standalone_web_search", k)
+        self.assertNotIn("--enable", k)
         s = format_command(build_invocation("codex", "search", "q", cfg).argv)
         self.assertIn("--json", s)
         self.assertIn("--enable standalone_web_search", s)
+        self.assertNotIn("disabled", s)
+
+    def test_claude_isolation_flags_and_stream_on_both_arms(self):
+        cfg = starter_config("XERJ", "xerj.org")
+        for arm in ("knowledge", "search"):
+            argv = build_invocation("claude", arm, "q", cfg).argv
+            for flag in ("--strict-mcp-config", "--no-session-persistence", "--disable-slash-commands"):
+                self.assertIn(flag, argv)
+            self.assertIn("stream-json", argv)
+            self.assertIn("--verbose", argv)
+
+    def test_grok_json_on_both_arms(self):
+        cfg = starter_config("XERJ", "xerj.org")
+        k = format_command(build_invocation("grok", "knowledge", "q", cfg).argv)
+        self.assertIn("--output-format json", k)
 
 
 if __name__ == "__main__":
