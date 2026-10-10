@@ -4,6 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import os
+os.environ.setdefault("AEO_CANARY", "skip")  # no live identity canary in tests (unittest discover skips tests/__init__)
+
 ROOT = Path(__file__).resolve().parents[1]
 
 

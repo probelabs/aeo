@@ -16,6 +16,9 @@ from aeo.evidence import (
 )
 from aeo.runner import plan_remaining
 
+import os
+os.environ.setdefault("AEO_CANARY", "skip")  # no live identity canary in tests (unittest discover skips tests/__init__)
+
 
 def _cfg(prompts, engines=("grok",), samples=1):
     return {

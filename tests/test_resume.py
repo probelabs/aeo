@@ -6,6 +6,9 @@ from unittest.mock import patch
 from aeo.cli import main
 from aeo.engines import ExecResult
 
+import os
+os.environ.setdefault("AEO_CANARY", "skip")  # no live identity canary in tests (unittest discover skips tests/__init__)
+
 
 class ResumeTests(unittest.TestCase):
     def test_resume_skips_completed_cell(self):

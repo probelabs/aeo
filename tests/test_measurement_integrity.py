@@ -20,6 +20,8 @@ from aeo.config import starter_config
 from aeo.engines import build_invocation, format_command
 from aeo.engines import ExecResult
 
+os.environ.setdefault("AEO_CANARY", "skip")  # no live identity canary in tests (unittest discover skips tests/__init__)
+
 FIX = Path(__file__).parent / "fixtures"
 
 

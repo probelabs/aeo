@@ -12,6 +12,9 @@ from aeo import gsc
 from aeo.cli import main
 from aeo.layers import render_gsc_markdown, render_layers_html, run_layers
 
+import os
+os.environ.setdefault("AEO_CANARY", "skip")  # no live identity canary in tests (unittest discover skips tests/__init__)
+
 ROOT = Path(__file__).resolve().parents[1]
 FX = json.loads((ROOT / "tests" / "fixtures" / "gsc" / "acme_search_analytics.json").read_text(encoding="utf-8"))
 TODAY = date(2026, 10, 9)
