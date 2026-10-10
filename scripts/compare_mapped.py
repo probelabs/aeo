@@ -127,7 +127,7 @@ def render_html(doc: dict, run_name: str) -> str:
 
     head = "".join(f"<th>{html.escape(k)}</th>" for k in labels)
     out = [
-        "<html><head><meta charset=utf-8>",
+        "<html><head><meta charset=utf-8><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
         f"<title>{html.escape(run_name)}: mapped questions (approximate)</title>",
         "<style>body{font:14px system-ui;margin:24px}table{border-collapse:collapse}"
         "td,th{border:1px solid #ddd;padding:4px 6px;vertical-align:top}.v{color:#666;font-size:12px}</style></head><body>",
@@ -137,7 +137,7 @@ def render_html(doc: dict, run_name: str) -> str:
         f"Strict {html.escape(brand)} matching on every side. Approximate pairs are a rough guide, not like for like.</p>",
         f"<p>{html.escape(brand)} named: " + ", ".join(
             f"{html.escape(k)} {h} of {t} answers" for k, (h, t) in doc["summary"].items()) + "</p>",
-        f"<table><tr><th>New question</th><th>Old id</th><th>Match</th><th>Assistant</th>{head}"
+        f"<div style='overflow-x:auto'><table><tr><th>New question</th><th>Old id</th><th>Match</th><th>Assistant</th>{head}"
         f"<th>{html.escape(cur)} vendors named</th>"
         + (f"<th>{html.escape(prev)} vendors named</th>" if prev else "") + "</tr>",
     ]
@@ -152,7 +152,7 @@ def render_html(doc: dict, run_name: str) -> str:
             if prev:
                 row += f"<td class=v>{html.escape(', '.join((c.get(prev) or {}).get('vendors') or []))}</td>"
             out.append(row + "</tr>")
-    out.append("</table></body></html>")
+    out.append("</table></div></body></html>")
     return "\n".join(out)
 
 

@@ -89,20 +89,18 @@ class JudgeHtmlVendorTests(unittest.TestCase):
             (run / "claude.json").write_text(json.dumps(doc))
             (run / "vendors_judged.json").write_text(json.dumps(store))
             html = render.render(run)
-        who = html[html.index("<h2>Who got named</h2>") : html.index("<h2>Surprise competitors</h2>")]
-        surprise = html[html.index("<h2>Surprise competitors</h2>") : html.index("<h2>Vendors typed into search</h2>")]
+        who = html[html.index("<h3>Who got named</h3>") : html.index("<h3>Surprise competitors</h3>")]
+        surprise = html[html.index("<h3>Surprise competitors</h3>") : html.index("<h3>Typed into search</h3>")]
         self.assertNotIn("UserCheck", who)
         self.assertIn("Kickbox", who)
         self.assertIn("UserCheck", surprise)
         self.assertNotIn("Kickbox", surprise)
-        self.assertIn("badge-surprise", surprise)
-        self.assertIn("Named instead: UserCheck", html)
-        self.assertIn("badge-surprise", html)
-        box = html[html.index("<h2>Vendors typed into search</h2>") : html.index("<h2>Queries</h2>")]
+        self.assertIn("cat-grid", surprise)
+        self.assertIn("Named instead: <span class='untracked'>UserCheck</span>", html)
+        box = html[html.index("<h3>Typed into search</h3>") : html.index("<section id='retrieval'>")]
         self.assertIn("UserCheck", box)
-        self.assertIn("badge-surprise", box)
-        self.assertIn("not on the config seed list", box)
-        self.assertIn("Surprises", html)
+        self.assertIn("not tracked", box)
+        self.assertNotIn("not on the config seed list", html)
         # header follows the workspace, not the historical Tyk defaults
         head = html[: html.index("<main>")]
         self.assertIn("<title>Autheona · AEO report</title>", head)
@@ -199,21 +197,19 @@ class JudgeHtmlVendorTests(unittest.TestCase):
             html = render.render(run)
 
         surprise = html[
-            html.index("<h2>Surprise competitors</h2>") : html.index(
-                "<h2>Vendors typed into search</h2>"
+            html.index("<h3>Surprise competitors</h3>") : html.index(
+                "<h3>Typed into search</h3>"
             )
         ]
         self.assertIn("UserCheck", surprise)
-        self.assertIn("badge-surprise", surprise)
         self.assertNotIn("Amazon API Gateway", surprise)
 
-        box = html[html.index("<h2>Vendors typed into search</h2>") : html.index("<h2>Queries</h2>")]
+        box = html[html.index("<h3>Typed into search</h3>") : html.index("<section id='retrieval'>")]
         self.assertIn("Amazon API Gateway", box)
         self.assertIn("UserCheck", box)
-        self.assertIn("not on the config seed list", box)
-        # Badge only on the non-seed search name, not the collapsed seed.
-        self.assertIn("UserCheck <span class='badge-surprise'>surprise</span>", box)
-        self.assertNotIn("Amazon API Gateway <span class='badge-surprise'>surprise</span>", box)
+        # "not tracked" only on the non-seed search name, not the collapsed seed.
+        self.assertIn("UserCheck <span class='badge-surprise'>not tracked</span>", box)
+        self.assertNotIn("Amazon API Gateway <span class='badge-surprise'>not tracked</span>", box)
 
     def test_regex_fallback_without_vendor_store(self):
         render = _load_render()
@@ -245,7 +241,7 @@ class JudgeHtmlVendorTests(unittest.TestCase):
             html = render.render(run)
         self.assertIn("Kong", html)
         self.assertIn("Tyk", html)
-        self.assertIn("strict brand match", html)
+        self.assertIn("exact match: Tyk", html)
         self.assertNotIn("brand_mentioned", html)
 
 

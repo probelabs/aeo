@@ -888,7 +888,11 @@ def surprise_frequencies(
             for rec in recs:
                 if rec["origin"] == "surprise":
                     counts[rec["name"]] += 1
-    return counts.most_common(16)
+    from aeo.report_ux import filter_surprises
+
+    texts = [str(p.get("prompt_text") or "") for d in docs.values() if isinstance(d, dict) for p in d.get("prompts") or []]
+    kept, _excluded = filter_surprises(counts, texts, docs.keys())
+    return kept.most_common(16)
 
 
 def search_box_vendor_counts(

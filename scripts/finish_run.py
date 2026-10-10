@@ -13,12 +13,13 @@ Steps, each logged to RUN_DIR/finish_run.log with its exit code:
   2. Merge shards (<engine>.w*.json -> <engine>.json) when shards exist.
   3. Strict brand rescore in place (scripts/rescore_run.py --in-place), so
      cell hits and the summary rates agree.
-  4. judge_run.py, then render_judge_html.py (the report picks up the
-     Google / Search Console layers from RUN_DIR/google when present).
-     The rendered <run>-report.html is also copied to <run>-full-report.html.
+  4. judge_run.py.
   5. compare_mapped.py when --mapped-baseline is given and MAPPING.json exists.
   6. change_report.py when --change-baseline is given.
-  7. --copy-to: copy reports and the main JSON outputs there.
+  7. render_judge_html.py: ONE report, <run>-report.html, that embeds the change
+     summary (change.json), the mapped comparison as a collapsed appendix and the
+     Google / Search Console layers from RUN_DIR/google when present.
+  8. --copy-to: copy that report and the main JSON outputs there.
 Writes RUN_DIR/JUDGE_DONE.txt at the end. This replaces the per-run
 watchdog_finish.py / render_full_after_judge.sh copies.
 """
@@ -34,7 +35,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-COPY_PATTERNS = ("*report.html", "*mapped-compare.html", "mapped-compare.json", "board.json", "judge.json",
+COPY_PATTERNS = ("mapped-compare.json", "board.json", "judge.json",
                  "vendors_judged.json", "claude.json", "codex.json", "grok.json", "change.json", "NEXT_STEPS.txt")
 
 
@@ -89,10 +90,7 @@ class Finisher:
                                            "--config", str(self.a.config.expanduser()), "--in-place"])
         engines = [e for e in ("claude", "codex", "grok") if (self.run_dir / f"{e}.json").exists()]
         self.step("judge", [self.py, f"{s}/judge_run.py", str(self.run_dir), *engines])
-        self.step("render", [self.py, f"{s}/render_judge_html.py", str(self.run_dir)])
-        rep = self.run_dir / f"{self.run_dir.name}-report.html"
-        if rep.exists():
-            shutil.copyfile(rep, self.run_dir / f"{self.run_dir.name}-full-report.html")
+        # Change report and mapped comparison first: the single report embeds both.
         if self.a.mapped_baseline and (self.run_dir / "MAPPING.json").exists():
             argv = [self.py, f"{s}/compare_mapped.py", str(self.run_dir), "--config", str(self.a.config.expanduser())]
             for b in self.a.mapped_baseline:
@@ -104,13 +102,17 @@ class Finisher:
             if self.brand:
                 argv += ["--brand", self.brand]
             self.step("change report", argv)
+        self.step("render", [self.py, f"{s}/render_judge_html.py", str(self.run_dir)])
         if self.a.copy_to:
             dest = Path(self.a.copy_to).expanduser()
             dest.mkdir(parents=True, exist_ok=True)
+            rep = self.run_dir / f"{self.run_dir.name}-report.html"
+            if rep.exists():
+                shutil.copyfile(rep, dest / rep.name)
             for pat in COPY_PATTERNS:
                 for f in self.run_dir.glob(pat):
                     shutil.copyfile(f, dest / f.name)
-            for n in ("google.html", "google.md", "gsc.md"):
+            for n in ("google.md", "gsc.md"):
                 f = self.run_dir / "google" / n
                 if f.exists():
                     shutil.copyfile(f, dest / n)
