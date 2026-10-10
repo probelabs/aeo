@@ -34,7 +34,7 @@ from aeo.vendors import (  # noqa: E402
 STANCE = {"recommend", "mention", "warn", "reject"}
 POSITION = {"first", "among", "last", "aside"}
 ENGINES = ("claude", "codex", "grok")
-BRAND = os.environ.get("AEO_BRAND") or "Tyk"
+BRAND = os.environ.get("AEO_BRAND") or ""
 
 JUDGE_PROMPT = """You classify how an answer talks about the brand {brand}.
 Return ONLY JSON with keys:
@@ -82,14 +82,14 @@ Return ONLY JSON:
 Rules:
 - The counts are exact. Use only them; never estimate or round them up into a percentage of "answers". The TOTAL line is the whole run; never add engines up yourself.
 - Keep "named", "linked to the site", "recommended" and "described accurately" apart. Do not call an answer that only names {brand} a recommendation.
-- "Without search" counts only answers where browsing was confirmed off. Never present answers whose browsing is unknown as recall from memory.
+- "From memory" counts only answers where web search was confirmed off. Never present answers whose search status is unknown as recall from memory.
 - Write for a busy founder, not an analyst. Plain English only.
   - Never write field or label names such as mention_k, mention_s, search_rate, knowledge_trap, search_likely, product_fit, prompt ids, or any snake_case word.
   - Never write raw ratios or decimals such as 0/52, 1/93 or 0.172. Say it in words: "none of the 93 Codex answers", "1 of 372 answers", "Codex searched the web for almost every question".
 - Each action: "why" says what we saw; "do" says what to do. When an action is about being found through web search, quote 2 or 3 real search queries from SEARCH EVIDENCE and name the URLs the assistant cited instead of {brand}'s site. Do not invent queries, URLs, pages or features.
 - Prefer gaps: named but last/aside/reject; question groups where the brand never appears; engines that never search; vendors always ahead of {brand}.
-- Surprise competitors (named in answers but not on the config seed list) are a first-class gap. High-frequency surprises should get an action: review them, decide whether to add the repeats to the next run's seed list, and treat the category as an incumbent you did not expect.
-- Do not mention Tyk marketing slogans.
+- Surprise competitors (named in answers but not on our tracked list) are a first-class gap. High-frequency surprises should get an action: review them, decide whether to add the repeats to the tracked list, and treat the category as an incumbent you did not expect.
+- Do not repeat {brand} marketing slogans.
 - No more than 7 actions. Rank by expected AEO lift.
 
 COUNTS:
@@ -603,7 +603,7 @@ def resolve_brand(docs: dict[str, dict]) -> str:
     if env:
         return env
     brand, _, _, _ = workspace_from_docs(docs)
-    return brand or "Tyk"
+    return brand or "the brand"
 
 
 def vendor_cell_done(cell: object) -> bool:

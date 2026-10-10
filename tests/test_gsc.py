@@ -119,7 +119,8 @@ class LayerTests(unittest.TestCase):
             self.assertIn("Since the previous run", md)
             frag = render_layers_html(None, doc)
             self.assertIn('id="search-console"', frag)
-            self.assertIn("Impressions but no clicks", frag)
+            self.assertIn("impressions but no clicks", frag)
+            self.assertIn("places higher (better)", frag)
 
     def test_google_cards_show_gsc_numbers(self):
         with tempfile.TemporaryDirectory() as d:

@@ -156,7 +156,8 @@ def _pos(v: Any) -> str:
 
 
 def _pct(v: Any) -> str:
-    return f"{100 * float(v or 0):.1f}%"
+    from aeo.report_ux import pct  # one percent format everywhere (never shows a real non-zero as 0.0%)
+    return pct(float(v or 0))
 
 
 def _signed(v: Any, fmt: str = "{:+d}") -> str:
@@ -356,7 +357,11 @@ _CSS = """
 .aeo-layer .delta{font-size:12px;opacity:.85;margin:4px 0}
 .aeo-layer details{margin:6px 0}.aeo-layer summary{cursor:pointer;font-size:13px}
 .aeo-layer pre{white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:380px;overflow:auto;padding:8px;border:1px solid rgba(127,127,127,.25);border-radius:8px}
-.aeo-layer ol{margin:4px 0 8px;padding-left:22px;font-size:13px}
+.aeo-layer ol{margin:4px 0 8px;padding-left:22px;font-size:13px;word-break:break-word}
+.aeo-layer .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.aeo-layer td.dom{overflow-wrap:anywhere}.aeo-layer ol a{word-break:break-all}
+.aeo-layer .gsum td{white-space:normal}
+@media (max-width:600px){.aeo-layer{padding:12px}.aeo-layer table{font-size:12px}.aeo-layer .table-wrap>table{min-width:600px}.aeo-layer td.dom{min-width:150px}}
 """
 
 
@@ -390,33 +395,108 @@ def _top10_html(rows: list[dict[str, Any]]) -> str:
     return "".join(out)
 
 
-def render_google_html(doc: dict[str, Any], gsc_doc: dict[str, Any] | None = None) -> str:
+def _not_ranked(rank: Any, seen: Any) -> str:
+    if rank:
+        return f"#{rank}"
+    return f"not ranked (Google returned {seen})" if isinstance(seen, int) else "not ranked"
+
+
+def current_target_notes(config_path: str | Path | None = None) -> dict[str, str]:
+    """page_should_demonstrate per query from the current config (AEO_CONFIG), not the stored run."""
+    import os
+
+    path = config_path or os.environ.get("AEO_CONFIG")
+    if not path:
+        return {}
+    try:
+        cfg = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    out: dict[str, str] = {}
+    for t in cfg.get("google_targets") or []:
+        if isinstance(t, dict) and t.get("query"):
+            out[g.norm_query(t["query"])] = str(t.get("page_should_demonstrate") or "")
+    return out
+
+
+def most_cited_domains(doc: dict[str, Any], tier: str | None = None) -> list[tuple[str, int]]:
+    """Domains cited in AI Overviews across searches (one count per search)."""
+    from collections import Counter
+
+    c: Counter[str] = Counter()
+    for x in doc.get("searches") or []:
+        if tier and x.get("tier") != tier:
+            continue
+        s = x.get("serp") or {}
+        for d in set(s.get("aio_ref_domains") or []):
+            c[d] += 1
+    return c.most_common(12)
+
+
+def _wrap(table_html: str) -> str:
+    return f'<div class="table-wrap">{table_html}</div>'
+
+
+PARTIAL_TIP = ("Google returned fewer organic results than requested (often one page), "
+               "so 'not ranked' only covers the results shown.")
+
+
+def render_google_html(doc: dict[str, Any], gsc_doc: dict[str, Any] | None = None,
+                       notes: dict[str, str] | None = None) -> str:
+    from aeo.report_ux import location_words, user_time
+
     st = doc.get("settings") or {}
     sm = doc.get("summary") or g.summarize(doc)
     t, w = sm.get(g.TARGET_TIER) or {}, sm.get(g.WATCH_TIER) or {}
     dom = doc.get("domain") or ""
     by_gsc = _gsc_by_query(gsc_doc)
+    notes = current_target_notes() if notes is None else notes
+    targets = [x for x in doc.get("searches") or [] if x.get("tier") == g.TARGET_TIER]
     P = ['<section class="aeo-layer google" id="google">', "<h2>Google</h2>"]
     P.append(
-        f'<p class="note">Live Google via DataForSEO · location {_e(st.get("location_code"))} · {_e(st.get("language_code"))} · {_e(st.get("device"))} · '
-        f'generated {_e(doc.get("generated_at"))} · spent ${float(doc.get("cost_usd") or 0):.3f}. '
-        "Separate layer: these numbers are not part of the LLM mention scores."
-        + (f' Compared with the run from {_e(doc["baseline"].get("generated_at"))}.' if doc.get("baseline") else "")
+        f'<p class="note">Live Google results for {_e(location_words(st.get("location_code"), st.get("language_code"), st.get("device")))}, '
+        f'checked {_e(user_time(doc.get("generated_at")))}. Separate from the AI-assistant numbers above.'
+        + (f' Compared with the check from {_e(user_time(doc["baseline"].get("generated_at")))}.' if doc.get("baseline") else "")
         + "</p>"
     )
     cards = [
         ("Target searches", t.get("searches", 0)),
-        ("AI Overview shown", t.get("aio_present", 0)),
-        (f"AIO cites {dom}", t.get("own_cited", 0)),
-        ("We rank top 10", t.get("own_top10", 0)),
-        ("We rank top 100", t.get("own_top100", 0)),
+        ("Show an AI Overview", t.get("aio_present", 0)),
+        (f"AI Overview cites {dom}", t.get("own_cited", 0)),
+        ("We rank in the top 10", t.get("own_top10", 0)),
+        ("We rank in the top 100", t.get("own_top100", 0)),
     ]
     if w.get("searches"):
         cards.append(("Watch searches", w["searches"]))
-    P.append('<div class="cards">' + "".join(f'<div class="card"><b>{_e(v)}</b>{_e(k)}</div>' for k, v in cards) + "</div>")
-    for x in [x for x in doc.get("searches") or [] if x.get("tier") == g.TARGET_TIER]:
+    n_t = t.get("searches", 0)
+    P.append('<div class="cards">' + "".join(
+        f'<div class="card"><b>{_e(v)}{"" if k in ("Target searches", "Watch searches") else f" of {n_t}"}</b>{_e(k)}</div>'
+        for k, v in cards) + "</div>")
+    if targets:
+        rows = ['<table class="gsum"><tr><th>#</th><th>Search</th><th>AI Overview</th><th>Cites us</th><th>Our rank</th>'
+                '<th>Most-cited sites in the AI Overview</th><th class="n">Search Console impressions</th></tr>']
+        for x in targets:
+            s = x.get("serp") or {}
+            gq = (by_gsc.get(g.norm_query(x["query"])) or {}).get("current") or {}
+            if not s.get("ok"):
+                rows.append(f"<tr><td>{_e(x.get('priority'))}</td><td>{_e(x['query'])}</td><td colspan=5>error: {_e(s.get('error'))}</td></tr>")
+                continue
+            rows.append(
+                f"<tr><td>{_e(x.get('priority'))}</td><td><a href=\"#gt-{_e(x.get('priority'))}\">{_e(x['query'])}</a></td>"
+                f"<td>{'yes' if s.get('aio_present') else 'no'}</td><td>{'yes' if s.get('own_cited') else 'no'}</td>"
+                f"<td>{_e(_not_ranked(s.get('own_rank'), s.get('organic_count')))}</td>"
+                f"<td class=\"dom\">{_e(', '.join((s.get('aio_ref_domains') or [])[:4]) or '—')}</td>"
+                f"<td class=\"n\">{_e(_num(gq.get('impressions')) if gq else '0')}</td></tr>"
+            )
+        rows.append("</table>")
+        P.append(_wrap("".join(rows)))
+        top = most_cited_domains(doc, g.TARGET_TIER)
+        if top:
+            P.append('<p class="delta"><b>Most-cited sites across the AI Overviews</b> (number of target searches citing them): '
+                     + _e(", ".join(f"{d} {n}" for d, n in top)) + "</p>")
+    for x in targets:
         s = x.get("serp") or {}
-        P.append('<article class="search">')
+        P.append(f'<article class="search" id="gt-{_e(x.get("priority"))}">')
         P.append(f"<h3>{_e(x.get('priority'))}. {_e(x['query'])}</h3>")
         if not s.get("ok"):
             P.append(f'<p class="note">Error: {_e(s.get("error"))}</p></article>')
@@ -424,45 +504,48 @@ def render_google_html(doc: dict[str, Any], gsc_doc: dict[str, Any] | None = Non
         badges = [
             _badge("AI Overview" if s.get("aio_present") else "no AI Overview", bool(s.get("aio_present"))),
             _badge(f"{dom} cited" if s.get("own_cited") else f"{dom} not cited", bool(s.get("own_cited"))),
-            _badge(f"our rank {_rank_word_depth(s.get('own_rank'), st.get('depth'), s.get('organic_count'))}", bool(s.get("own_rank"))),
+            _badge(f"our rank: {_not_ranked(s.get('own_rank'), s.get('organic_count'))}", bool(s.get("own_rank"))),
         ]
         am = x.get("ai_mode") or {}
         if am.get("ok"):
             badges.append(_badge(f"AI Mode {'cites ' + dom if am.get('own_cited') else 'does not cite ' + dom}", bool(am.get("own_cited"))))
         if s.get("partial"):
-            badges.append(_badge("partial results"))
+            badges.append(f'<span title="{_e(PARTIAL_TIP)}">fewer results than requested ⓘ</span>')
         P.append('<div class="badges">' + "".join(badges) + "</div>")
         gw = gsc_words(by_gsc.get(g.norm_query(x["query"])))
         if gw:
             P.append(f'<p class="delta">{_e(gw)}</p>')
         if x.get("delta"):
-            P.append(f'<p class="delta">Since last run: {_e("; ".join(delta_words(x["delta"])))}</p>')
-        if x.get("page_should_demonstrate"):
-            P.append(f'<p class="delta">Our page should demonstrate: {_e(x["page_should_demonstrate"])}</p>')
+            P.append(f'<p class="delta">Since last check: {_e("; ".join(delta_words(x["delta"])))}</p>')
+        note = notes.get(g.norm_query(x["query"]), x.get("page_should_demonstrate")) if notes else x.get("page_should_demonstrate")
+        if note:
+            P.append(f'<p class="delta">Our page should show: {_e(note)}</p>')
         if s.get("aio_present"):
-            P.append(f"<details><summary>AI Overview text ({len(s.get('aio_text') or '')} chars)</summary><pre>{_e(s.get('aio_text'))}</pre></details>")
-            P.append(f"<p><b>AI Overview sources</b> ({len(s.get('aio_references') or [])})</p>" + _refs_html(s.get("aio_references") or []))
-        P.append("<p><b>Top 10 organic</b>" + (f" · our position {_e(_rank_word_depth(s.get('own_rank'), st.get('depth'), s.get('organic_count')))}" ) + "</p>" + _top10_html(s.get("top10") or []))
+            P.append(f"<details><summary>AI Overview text and its {len(s.get('aio_references') or [])} sources</summary>"
+                     f"<pre>{_e(s.get('aio_text'))}</pre>{_refs_html(s.get('aio_references') or [])}</details>")
+        P.append(f"<details><summary>Top 10 results · our rank: {_e(_not_ranked(s.get('own_rank'), s.get('organic_count')))}</summary>"
+                 + _wrap(_top10_html(s.get("top10") or [])) + "</details>")
         if am.get("ok"):
             P.append(f"<details><summary>AI Mode answer and sources ({len(am.get('references') or [])})</summary><pre>{_e(am.get('text'))}</pre>{_refs_html(am.get('references') or [])}</details>")
         P.append("</article>")
     watch = [x for x in doc.get("searches") or [] if x.get("tier") == g.WATCH_TIER]
     if watch:
         P.append("<h3>Watch list</h3>")
-        P.append('<table><tr><th>Search</th><th>AIO</th><th>Cites us</th><th>Our rank</th><th class="n">GSC impr</th><th>Top AIO sources</th><th>Since last run</th></tr>')
+        rows = ['<table><tr><th>Search</th><th>AI Overview</th><th>Cites us</th><th>Our rank</th><th class="n">Search Console impressions</th><th>Top AI Overview sources</th><th>Since last check</th></tr>']
         for x in watch:
             s = x.get("serp") or {}
             gq = (by_gsc.get(g.norm_query(x["query"])) or {}).get("current") or {}
             if not s.get("ok"):
-                P.append(f"<tr><td>{_e(x['query'])}</td><td colspan=6>error: {_e(s.get('error'))}</td></tr>")
+                rows.append(f"<tr><td>{_e(x['query'])}</td><td colspan=6>error: {_e(s.get('error'))}</td></tr>")
                 continue
             own = ' class="own"' if s.get("own_cited") or (s.get("own_rank") or 999) <= 10 else ""
-            P.append(
+            rows.append(
                 f"<tr{own}><td>{_e(x['query'])}</td><td>{'yes' if s.get('aio_present') else 'no'}</td><td>{'yes' if s.get('own_cited') else ''}</td>"
-                f"<td>{_e(_rank_word_depth(s.get('own_rank'), st.get('watch_depth'), s.get('organic_count')))}</td><td class=\"n\">{_e(_num(gq.get('impressions')) if gq else '')}</td>"
-                f"<td>{_e(', '.join((s.get('aio_ref_domains') or [])[:4]))}</td><td>{_e('; '.join(delta_words(x.get('delta'))))}</td></tr>"
+                f"<td>{_e(_not_ranked(s.get('own_rank'), s.get('organic_count')))}</td><td class=\"n\">{_e(_num(gq.get('impressions')) if gq else '')}</td>"
+                f"<td class=\"dom\">{_e(', '.join((s.get('aio_ref_domains') or [])[:4]))}</td><td>{_e('; '.join(delta_words(x.get('delta'))))}</td></tr>"
             )
-        P.append("</table>")
+        rows.append("</table>")
+        P.append(_wrap("".join(rows)))
     P.append("</section>")
     return "\n".join(P)
 
@@ -470,49 +553,82 @@ def render_google_html(doc: dict[str, Any], gsc_doc: dict[str, Any] | None = Non
 def _rows_html(rows: list[dict[str, Any]], label: str, link: bool = False) -> str:
     if not rows:
         return '<p class="note">None in this window.</p>'
-    out = [f'<table><tr><th>{_e(label)}</th><th class="n">Clicks</th><th class="n">Impr</th><th class="n">CTR</th><th class="n">Pos</th><th class="n">Δ clicks</th><th class="n">Δ impr</th></tr>']
+    show_dc = any((r.get("change") or {}).get("clicks") for r in rows)
+    show_di = any((r.get("change") or {}).get("impressions") for r in rows)
+    head = f'<table><tr><th>{_e(label)}</th><th class="n">Clicks</th><th class="n">Impressions</th><th class="n">CTR</th><th class="n">Avg position</th>'
+    head += ('<th class="n">Clicks vs prior 28 days</th>' if show_dc else "") + ('<th class="n">Impressions vs prior 28 days</th>' if show_di else "") + "</tr>"
+    out = [head]
     for r in rows:
         ch = r.get("change") or {}
         key = _link(r["key"]) if link else _e(r["key"])
-        out.append(f'<tr><td>{key}</td><td class="n">{_num(r["clicks"])}</td><td class="n">{_num(r["impressions"])}</td><td class="n">{_pct(r["ctr"])}</td>'
-                   f'<td class="n">{_pos(r["position"])}</td><td class="n">{_e(_signed(ch.get("clicks")))}</td><td class="n">{_e(_signed(ch.get("impressions")))}</td></tr>')
+        out.append(f'<tr><td class="dom">{key}</td><td class="n">{_num(r["clicks"])}</td><td class="n">{_num(r["impressions"])}</td><td class="n">{_pct(r["ctr"])}</td>'
+                   f'<td class="n">{_pos(r["position"])}</td>'
+                   + (f'<td class="n">{_e(_signed(ch.get("clicks")))}</td>' if show_dc else "")
+                   + (f'<td class="n">{_e(_signed(ch.get("impressions")))}</td>' if show_di else "") + "</tr>")
     out.append("</table>")
-    return "".join(out)
+    return _wrap("".join(out))
+
+
+def position_words(change: Any, prev: Any) -> str:
+    """'2.9 places lower (worse) than 12.8'. GSC position change is previous - current, so + is better."""
+    try:
+        d = float(change or 0)
+    except (TypeError, ValueError):
+        d = 0.0
+    if not prev:
+        return "no earlier position"
+    if abs(d) < 0.05:
+        return f"unchanged from {_pos(prev)}"
+    return f"{abs(d):.1f} places {'higher (better)' if d > 0 else 'lower (worse)'} than {_pos(prev)}"
 
 
 def render_gsc_html(doc: dict[str, Any]) -> str:
+    from aeo.report_ux import user_time
+
     w = doc.get("windows") or {}
     tot = doc.get("totals") or {}
     tc, tp, ch = tot.get("current") or {}, tot.get("previous") or {}, tot.get("change") or {}
     P = ['<section class="aeo-layer gsc" id="search-console">', "<h2>Search Console</h2>"]
-    P.append(f'<p class="note">{_e(doc.get("site"))} · last 28 days {_e(w.get("current", {}).get("start"))}..{_e(w.get("current", {}).get("end"))} '
-             f'vs prior {_e(w.get("previous", {}).get("start"))}..{_e(w.get("previous", {}).get("end"))}. Separate layer: not part of the LLM mention scores.</p>')
+    P.append(f'<p class="note">{_e(doc.get("site"))} · last 28 days {_e(w.get("current", {}).get("start"))} to {_e(w.get("current", {}).get("end"))} '
+             f'vs the 28 days before ({_e(w.get("previous", {}).get("start"))} to {_e(w.get("previous", {}).get("end"))}). '
+             f'Checked {_e(user_time(doc.get("generated_at")))}. Separate from the AI-assistant numbers above.</p>')
     cards = [
-        ("Clicks", _num(tc.get("clicks")), _signed(ch.get("clicks"))),
-        ("Impressions", _num(tc.get("impressions")), _signed(ch.get("impressions"))),
-        ("CTR", _pct(tc.get("ctr")), f"{100 * float(ch.get('ctr') or 0):+.1f} pt"),
-        ("Avg position", _pos(tc.get("position")), _signed(ch.get("position"), "{:+.1f}") + " (+ = up)"),
+        ("Clicks", _num(tc.get("clicks")), f"was {_num(tp.get('clicks'))}"),
+        ("Impressions", _num(tc.get("impressions")), f"was {_num(tp.get('impressions'))}"),
+        ("Click-through rate", _pct(tc.get("ctr")), f"was {_pct(tp.get('ctr'))}"),
+        ("Average position", _pos(tc.get("position")), position_words(ch.get("position"), tp.get("position"))),
     ]
-    P.append('<div class="cards">' + "".join(f'<div class="card"><b>{_e(v)}</b>{_e(k)} · {_e(d)} vs prior 28d</div>' for k, v, d in cards) + "</div>")
+    P.append('<div class="cards">' + "".join(f'<div class="card"><b>{_e(v)}</b>{_e(k)} · {_e(d)}</div>' for k, v, d in cards) + "</div>")
     vr = tot.get("vs_previous_run")
     if vr:
-        P.append(f'<p class="delta">Since the previous run ({_e((doc.get("baseline") or {}).get("generated_at"))}): clicks {_e(_signed(vr.get("clicks")))}, impressions {_e(_signed(vr.get("impressions")))}.</p>')
-    P.append(f'<p class="note">Prior 28d: {_num(tp.get("clicks"))} clicks, {_num(tp.get("impressions"))} impressions.</p>')
-    if doc.get("searches"):
-        P.append("<h3>Tracked searches</h3>")
-        P.append('<table><tr><th>Search</th><th>Tier</th><th class="n">Clicks</th><th class="n">Impr</th><th class="n">Pos</th><th class="n">Δ impr vs prior 28d</th><th class="n">Δ impr vs last run</th></tr>')
-        for x in doc["searches"]:
-            c = x.get("current") or {}
-            P.append(f'<tr><td>{_e(x["query"])}</td><td>{_e(x["tier"])}</td><td class="n">{_num(c.get("clicks"))}</td><td class="n">{_num(c.get("impressions"))}</td>'
-                     f'<td class="n">{_pos(c.get("position"))}</td><td class="n">{_e(_signed((x.get("change") or {}).get("impressions")))}</td>'
-                     f'<td class="n">{_e(_signed((x.get("vs_previous_run") or {}).get("impressions")))}</td></tr>')
-        P.append("</table>")
-    for title, key, label, link in (("Striking distance (position 5–20, real impressions)", "striking_distance", "Query", False),
-                                    ("Impressions but no clicks", "impressions_no_clicks", "Query", False),
-                                    ("Top queries", "top_queries", "Query", False), ("Top pages", "top_pages", "Page", True)):
-        P.append(f"<h3>{_e(title)}</h3>" + _rows_html(doc.get(key) or [], label, link))
+        P.append(f'<p class="delta">Since the previous check ({_e(user_time((doc.get("baseline") or {}).get("generated_at")))}): clicks {_e(_signed(vr.get("clicks")))}, impressions {_e(_signed(vr.get("impressions")))}.</p>')
+    searches = doc.get("searches") or []
+    if searches:
+        seen = [x for x in searches if (x.get("current") or {}).get("impressions")]
+        if not seen:
+            P.append(f'<p class="delta"><b>Tracked searches:</b> none of the {len(searches)} tracked searches got impressions in this window.</p>')
+        else:
+            P.append("<h3>Tracked searches</h3>")
+            rows = ['<table><tr><th>Search</th><th class="n">Clicks</th><th class="n">Impressions</th><th class="n">Avg position</th><th class="n">Impressions vs prior 28 days</th></tr>']
+            for x in seen:
+                c = x.get("current") or {}
+                rows.append(f'<tr><td>{_e(x["query"])}</td><td class="n">{_num(c.get("clicks"))}</td><td class="n">{_num(c.get("impressions"))}</td>'
+                            f'<td class="n">{_pos(c.get("position"))}</td><td class="n">{_e(_signed((x.get("change") or {}).get("impressions")))}</td></tr>')
+            rows.append("</table>")
+            P.append(_wrap("".join(rows)))
+            if len(seen) < len(searches):
+                k = len(searches) - len(seen)
+                P.append(f'<p class="note">{k} other tracked search{"" if k == 1 else "es"} had no impressions.</p>')
+    striking = doc.get("striking_distance") or []
+    sk = {r.get("key") for r in striking}
+    no_clicks = [r for r in doc.get("impressions_no_clicks") or [] if r.get("key") not in sk]
+    P.append("<h3>Close to page one (average position 5–20)</h3>" + _rows_html(striking, "Query"))
+    P.append("<h3>Other searches with impressions but no clicks</h3>" + _rows_html(no_clicks, "Query"))
+    P.append("<details><summary>Top queries and top pages</summary>"
+             + "<h3>Top queries</h3>" + _rows_html(doc.get("top_queries") or [], "Query")
+             + "<h3>Top pages</h3>" + _rows_html(doc.get("top_pages") or [], "Page", True) + "</details>")
     if doc.get("watch_suggestions"):
-        P.append(f'<p class="note">{len(doc["watch_suggestions"])} GSC queries with impressions are not tracked yet. They were added to the proposals file as unapproved watch suggestions.</p>')
+        P.append(f'<p class="note">{len(doc["watch_suggestions"])} searches with impressions are not tracked yet. They were added to the proposals file for review.</p>')
     P.append("</section>")
     return "\n".join(P)
 
@@ -528,10 +644,15 @@ def render_layers_html(google_doc: dict[str, Any] | None, gsc_doc: dict[str, Any
     return "\n".join(parts)
 
 
+LAYER_MARKER = "<!--aeo-layers-->"
+
+
 def inject_html(page: str, fragment: str) -> str:
     """Insert the layer sections before </main> (or </body>). No fragment -> page unchanged."""
     if not fragment:
-        return page
+        return page.replace(LAYER_MARKER, "")
+    if LAYER_MARKER in page:
+        return page.replace(LAYER_MARKER, fragment)
     for marker in ("</main>", "</body>"):
         i = page.rfind(marker)
         if i != -1:
@@ -545,6 +666,6 @@ def with_layers(page: str, evidence_or_run: str | Path | None) -> str:
 
 
 def standalone_html(google_doc: dict[str, Any] | None, gsc_doc: dict[str, Any] | None, title: str = "Google layers") -> str:
-    return (f'<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>{_e(title)}</title></head>'
+    return (f'<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{_e(title)}</title></head>'
             f'<body style="font-family:system-ui,sans-serif;max-width:1100px;margin:2em auto;padding:0 1em"><main>'
             f"{render_layers_html(google_doc, gsc_doc)}</main></body></html>\n")

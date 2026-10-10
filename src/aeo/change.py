@@ -156,16 +156,17 @@ def _delta_pp(before: float | None, after: float | None) -> float | None:
 
 
 def _pct_label(rate: float | None) -> str:
-    if rate is None:
-        return "—"
-    return f"{rate * 100:.1f}%"
+    from aeo.report_ux import pct
+
+    return pct(rate)
 
 
 def _pp_label(delta: float | None) -> str:
     if delta is None:
         return "—"
-    sign = "+" if delta > 0 else ""
-    return f"{sign}{delta:.1f}pp"
+    from aeo.report_ux import points
+
+    return points(delta)
 
 
 def _vendor_source(vendors: dict[str, Any]) -> str:
@@ -479,6 +480,25 @@ def _models(snapshot: RunSnapshot) -> dict[str, set[str]]:
                 if isinstance(arm, dict) and arm.get("model"):
                     out.setdefault(engine, set()).add(str(arm["model"]))
     return out
+
+
+def assess_comparability(
+    baseline: RunSnapshot, current: RunSnapshot, overlap: dict[str, Any], engines: list[str], *, match: str = "text"
+) -> dict[str, Any]:
+    """Can a change between these runs be read as a trend? Lists every reason it cannot."""
+    reasons: list[str] = []
+    if match == "text":
+        n, b, c = int(overlap.get("overlap") or 0), int(overlap.get("baseline_questions") or 0), int(overlap.get("current_questions") or 0)
+        if n < b or n < c:
+            reasons.append(f"question set changed ({n} of {c} questions identical)")
+    bs, cs = _mset(baseline), _mset(current)
+    if bs and cs and (bs.get("id"), bs.get("question_hash")) != (cs.get("id"), cs.get("question_hash")):
+        reasons.append("different frozen question sets")
+    b_env, c_env = _env_of(baseline), _env_of(current)
+    if bool(b_env) != bool(c_env):
+        side = "baseline" if not b_env else "current"
+        reasons.append(f"the {side} run predates identity isolation (Oct 10, 2026), so its assistants could see the user's account")
+    return {"comparable": not reasons, "reasons": reasons}
 
 
 def _mset(snapshot: RunSnapshot) -> dict[str, Any] | None:
@@ -1644,6 +1664,7 @@ def diff_runs(
                    "current_questions": len(current.rows),
                    "overlap": len(baseline.prompt_ids & current.prompt_ids)}
     warnings = settings_drift(baseline, current, engines)
+    comparability = assess_comparability(baseline, current, overlap, engines, match=match)
     coverage = engine_coverage(baseline, current)
     comparable = coverage["comparable"]
     rank_engines = comparable or engines
@@ -1663,6 +1684,16 @@ def diff_runs(
     surprise = _new_surprise(vendors)
     headline = _headline(brand, rates, vendors, mover, surprise, coverage)
     interpretation = interpret_change(brand, rates, vendors, coverage)
+    if not comparability["comparable"]:
+        verdict = "Not comparable: " + "; ".join(comparability["reasons"])
+        headline = verdict + ". Differences below are shown for reference only, not as a trend."
+        interpretation = dict(interpretation)
+        interpretation["verdict"] = verdict
+        interpretation["not_comparable"] = True
+        interpretation["practical"] = []
+        interpretation["engine_split"] = [
+            {**e, "role": "flat", "direction": "flat"} for e in interpretation.get("engine_split") or []
+        ]
     bvf = vendors.get("brand_vs_field") or {}
     return {
         "schema_version": SCHEMA_VERSION,
@@ -1684,6 +1715,7 @@ def diff_runs(
         "engines": engines,
         "engine_coverage": coverage,
         "comparison": overlap,
+        "comparability": comparability,
         "warnings": warnings,
         "summary": {
             "headline": headline,
@@ -1725,7 +1757,7 @@ def diff_runs(
                 "Brand hits are deterministic brand_mentioned. Stance/position only when judge.json exists on both sides of a hit→hit.",
                 "Vendor counts prefer vendors_judged.json (LLM ∪ regex) per cell; otherwise regex competitor_mentions / vendors_in_search_queries.",
                 "A side without vendors_judged cannot surface surprises that were never on the seed list.",
-                "Names are merged with aeo.vendors normalize (Kong Gateway ≡ Kong when Kong is seeded).",
+                "Names are merged with aeo.vendors normalize (for example “Acme Gateway” counts as “Acme” when Acme is tracked).",
                 vendors.get("floor_note") or "",
                 "Competitor ranks use engines present on both sides. A skipped engine (e.g. Grok in baseline only) is labelled — do not read that as a market drop.",
                 "Blended brand rates, headline Δpp, and the executive narrative use comparable engines only. Per-engine rows still show a skipped engine.",
@@ -2153,7 +2185,7 @@ def render_change_html(payload: dict[str, Any]) -> str:
     parts.append("<h2>Brand vs field</h2>")
     parts.append(
         f"<p class='hint'>{_esc(brand)} named-cell count next to the competitor field "
-        "(sum of vendor mentions on comparable engines). Did we rise while Kong fell?</p>"
+        "(sum of vendor mentions on comparable engines). Did we rise while the competitors fell?</p>"
     )
     parts.append("<div class='table-wrap'><table class='data'><thead><tr>")
     parts.append(

@@ -80,7 +80,7 @@ class RenderLabelTests(unittest.TestCase):
         for bad in ("Mention K", "Mention S", "search_likely", "product_fit", "<code>brand_mentioned</code>",
                     "<code>recommended</code>", "<code>vendors_in_search_queries</code>"):
             self.assertNotIn(bad, out)
-        self.assertIn("Named without search", out)
+        self.assertIn("Named from memory", out)
         self.assertIn("likely to search, product fit", out)
         self.assertIn("1 of 2 answers", out)
 

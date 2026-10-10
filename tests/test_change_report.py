@@ -427,7 +427,8 @@ class ChangeReportTests(unittest.TestCase):
             dumped = json.loads(json_path.read_text())
             self.assertEqual(dumped["schema_version"], "aeo-change-v1")
             self.assertEqual(dumped["brand"], "Tyk")
-            self.assertIn("search mention", dumped["summary"]["headline"].lower())
+            self.assertIn("not comparable: question set changed", dumped["summary"]["headline"].lower())
+            self.assertFalse(dumped["comparability"]["comparable"])
 
     def test_load_single_evidence_file_as_baseline(self):
         with tempfile.TemporaryDirectory() as td:

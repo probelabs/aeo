@@ -215,19 +215,22 @@ def headline(summary: dict[str, Any], brand: str) -> str:
     parts = [f"{brand} was named in {t['named']} of {t['answers']} answers"]
     split = []
     if t["named_unaided"]:
-        split.append(f"{t['named_unaided']} without search")
+        split.append(f"{t['named_unaided']} from memory")
     if t["named_with_search"]:
-        split.append(f"{t['named_with_search']} with search")
+        split.append(f"{t['named_with_search']} with web search")
     if t["named_browsing_unknown"]:
-        split.append(f"{t['named_browsing_unknown']} where browsing is unknown")
+        split.append(f"{t['named_browsing_unknown']} where search was not confirmed off")
     if split:
         parts[0] += " (" + ", ".join(split) + ")"
     parts.append(f"linked as a source in {t['cited']}")
     parts.append(f"recommended in {t['recommended']}")
     if t["named"]:
-        acc = f"described accurately in {t['accurate']}"
-        if t["accuracy_not_judged"]:
-            acc += f" ({t['accuracy_not_judged']} not judged)"
+        if t["accuracy_not_judged"] and t["accuracy_not_judged"] >= t["named"]:
+            acc = "accuracy not checked yet"
+        else:
+            acc = f"described accurately in {t['accurate']}"
+            if t["accuracy_not_judged"]:
+                acc += f" ({t['accuracy_not_judged']} not checked)"
         parts.append(acc)
     s = ", ".join(parts[:-1]) + " and " + parts[-1] + "."
     if t["errors"] or t["missing"]:
