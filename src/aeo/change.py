@@ -1974,17 +1974,17 @@ def render_change_html(payload: dict[str, Any]) -> str:
     parts.append("<p class='eyebrow'>Methodology</p>")
     parts.append("<h1>What this diff measures</h1>")
     parts.append(
-        "<p>Same roster assumed. Cells match on <code>prompt_id</code> + engine + arm. "
-        "Brand hits are the deterministic <code>brand_mentioned</code> bit. "
-        "Competitor names prefer <code>vendors_judged.json</code> (LLM ∪ regex) and fall back "
-        "to evidence <code>competitor_mentions</code> / <code>vendors_in_search_queries</code>. "
+        "<p>Same roster assumed. Answers match on question id, assistant and with/without search. "
+        "Brand hits use the strict brand matcher on each stored answer. "
+        "Competitor names prefer the LLM vendor pass (LLM ∪ regex) and fall back "
+        "to the competitor and search-box vendor lists stored with each answer. "
         "No LLM wrote this page — the numbers are Python.</p>"
     )
     parts.append("<div class='method-grid'>")
     parts.append(
         "<article><h3>Vendor source</h3>"
         f"<p>Baseline: <b>{_esc(bsrc)}</b>. Current: <b>{_esc(csrc)}</b>. "
-        "A side without <code>vendors_judged</code> cannot list surprises that were never on the seed list.</p></article>"
+        "A side without the LLM vendor pass cannot list surprises that were never on the seed list.</p></article>"
     )
     bo = unmatched.get("baseline_only") or []
     co = unmatched.get("current_only") or []
@@ -2050,7 +2050,7 @@ def render_change_html(payload: dict[str, Any]) -> str:
         f"<td class='num delta {_delta_class(share.get('delta_pp'))}'>"
         f"{_esc(_pp_label(share.get('delta_pp')))}</td></tr>"
     )
-    for arm, lab in (("search", "Mention S"), ("knowledge", "Mention K")):
+    for arm, lab in (("search", "Named with search"), ("knowledge", "Named without search")):
         pair = brand_blk.get(arm) or {}
         parts.append(f"<tr><td>{lab}</td>{_rate_cell(pair)}</tr>")
     lead_b = (bvf.get("leader") or {}).get("baseline") or {}

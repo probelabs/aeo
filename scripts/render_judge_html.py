@@ -2,7 +2,7 @@
 """Tyk AEO HTML: board actions on top, stance-colored K/S grid, quotes in the drawer."""
 from __future__ import annotations
 
-import html, json, os, sys
+import html, json, os, re, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +23,52 @@ from aeo.vendors import (  # noqa: E402
 ENGINES = ("claude", "codex", "grok")
 ARMS = ("knowledge", "search")
 
+
+
+# Reader-facing words for internal labels. Reports must never show snake_case
+# field names (mention_k, search_likely, brand_mentioned, ...).
+ARM_LABELS = {"knowledge": "Named without search", "search": "Named with search"}
+QUESTION_CLASS_WORDS = {
+    "knowledge_trap": "general-knowledge question",
+    "search_likely": "likely to search",
+    "product_fit": "product fit",
+}
+
+
+def plain_class(label: str) -> str:
+    """Turn a roster class/why tag such as 'search_likely+product_fit' into plain words."""
+    parts = [p.strip() for p in re.split(r"[+,|]", str(label or "")) if p.strip()]
+    return ", ".join(QUESTION_CLASS_WORDS.get(p, p.replace("_", " ")) for p in parts)
+
+
+def brand_terms_words(brand: str, aliases) -> str:
+    """'Proof, ReqProof or reqproof.com' from the brand and its aliases."""
+    terms: list[str] = []
+    for t in [brand, *(aliases or [])]:
+        t = str(t or "").strip()
+        if t and t.lower() not in {x.lower() for x in terms}:
+            terms.append(t)
+    if len(terms) <= 1:
+        return terms[0] if terms else ""
+    return ", ".join(terms[:-1]) + " or " + terms[-1]
+
+
+_TOTAL_RE = re.compile(r"\b(\d+) of (\d+) answers\b")
+
+
+def fix_headline_total(headline: str, hits: int, total: int) -> str:
+    """The board judge is an LLM and sometimes states the wrong denominator
+    ("3 of 396 answers" on a 432-answer board). When the sentence states the
+    true hit count, force the true total; leave any other phrasing alone."""
+    if not headline or total <= 0:
+        return headline
+
+    def sub(m: re.Match) -> str:
+        if int(m.group(1)) == hits and int(m.group(2)) != total:
+            return f"{hits} of {total} answers"
+        return m.group(0)
+
+    return _TOTAL_RE.sub(sub, headline)
 
 
 def esc(s: str) -> str:
@@ -238,6 +284,23 @@ def rates(docs, judge, rows):
     return out
 
 
+def _cells(docs: dict):
+    for e in ENGINES:
+        for p in (docs.get(e) or {}).get("prompts") or []:
+            for arm in ("knowledge", "search"):
+                c = ((p.get("engines") or {}).get(e) or {}).get(arm)
+                if isinstance(c, dict) and not c.get("error"):
+                    yield c
+
+
+def brand_hits_total(docs: dict) -> int:
+    return sum(bool(c.get("brand_mentioned")) for c in _cells(docs))
+
+
+def n_cells_answered(docs: dict) -> int:
+    return sum(1 for _ in _cells(docs))
+
+
 def render(run: Path) -> str:
     docs, judge, board, vendors_raw = load(run)
     rows = merge_rows(docs)
@@ -299,11 +362,11 @@ def render(run: Path) -> str:
     parts.append(
         "<p>For each pain query we run <b>two arms</b> on Claude, Codex, and Grok. "
         "Seeds stay verbatim (no brand bait). Hits are regex brand mentions; stance/position "
-        "come from a post-hoc judge on the raw answer, not from the CLI <code>recommended</code> flag.</p>"
+        "come from a post-hoc judge on the raw answer, not from the assistant's own recommendation flag.</p>"
     )
     parts.append("<div class='method-grid'>")
     parts.append(
-        "<article><h3>Mention K</h3>"
+        f"<article><h3>{ARM_LABELS['knowledge']}</h3>"
         f"<p>Knowledge-only arm: web search forced <b>off</b>. Did the model name "
         f"<b>{esc(brand)}</b> from memory?</p>"
         "<p class='ex'><b>Example.</b> Query: “rate limit partner APIs by API key.” "
@@ -311,7 +374,7 @@ def render(run: Path) -> str:
         "Answer says “Tyk or Kong…” → <span class='leg-chip men'>mention</span>.</p></article>"
     )
     parts.append(
-        "<article><h3>Mention S</h3>"
+        f"<article><h3>{ARM_LABELS['search']}</h3>"
         f"<p>Search-allowed arm: the model <b>may</b> use web search. Did the final answer "
         f"name <b>{esc(brand)}</b> (whether or not it searched)?</p>"
         "<p class='ex'><b>Example.</b> Same query; model searches “API gateway rate limiting”, "
@@ -330,7 +393,7 @@ def render(run: Path) -> str:
         "<p><b>Searched</b> = the search arm actually fired a search tool. "
         "<b>Vendors typed into search</b> counts names inside those tool queries "
         f"(LLM extract ∪ regex over brand/aliases/config competitors), including {esc(brand)} "
-        "when an alias appears. Board ⚠ / <code>vendors_in_search_queries</code> stay regex-only.</p>"
+        "when an alias appears. The board ⚠ marks and the stored search-box vendor list stay regex-only.</p>"
         "<p class='ex'><b>Example.</b> Tool query “Kong vs Apigee vs Tyk rate limiting” "
         "counts all three in the search-vendor bars, even if the answer later drops Tyk. "
         "A query that only says “UserCheck email verification” still counts UserCheck "
@@ -339,7 +402,7 @@ def render(run: Path) -> str:
     parts.append("</div></section>")
 
     actions = (board or {}).get("actions") or []
-    headline = (board or {}).get("headline") or ""
+    headline = fix_headline_total((board or {}).get("headline") or "", brand_hits_total(docs), n_cells_answered(docs))
     parts.append("<section class='actions'>")
     parts.append("<p class='eyebrow'>Board judge</p>")
     if headline:
@@ -368,10 +431,10 @@ def render(run: Path) -> str:
 
     parts.append("<section class='hero'>")
     for lab, val, hint in (
-        ("Mention (S)", pct(mention_s), f"{sm} / {sc} search-arm names"),
-        ("Recommend (S)", pct(recommend_s), f"of {esc(brand)} hits that were actually pushed"),
-        ("First pick (S)", pct(first_s), f"of {esc(brand)} hits that led the list"),
-        ("Warn/reject (S)", pct(warn_s), f"of {esc(brand)} hits with a caveat or no"),
+        ("Named with search", pct(mention_s), f"{sm} of {sc} answers written with search allowed"),
+        ("Recommended (with search)", pct(recommend_s), f"of {esc(brand)} hits that were actually pushed"),
+        ("First pick (with search)", pct(first_s), f"of {esc(brand)} hits that led the list"),
+        ("Warn or reject (with search)", pct(warn_s), f"of {esc(brand)} hits with a caveat or no"),
         (
             "Surprises",
             str(surprise_mentions),
@@ -386,7 +449,7 @@ def render(run: Path) -> str:
     for e in ENGINES:
         r = eng_rates.get(e) or {}
         parts.append(f"<article class='engine'><header><h3>{e}</h3></header>")
-        for lab, key in (("Mention K", "mention_k"), ("Mention S", "mention_s"), ("Recommend among hits", "recommend_s"), ("First pick among hits", "first_s"), ("Searched", "search_rate")):
+        for lab, key in ((ARM_LABELS["knowledge"], "mention_k"), (ARM_LABELS["search"], "mention_s"), ("Recommend among hits", "recommend_s"), ("First pick among hits", "first_s"), ("Searched", "search_rate")):
             v = r.get(key) or 0
             parts.append(f"<div class='stat-line'><span>{lab}</span><span>{pct(v)}</span></div>")
             parts.append(f"<div class='bar'><span class='bar-fill teal' style='width:{v*100:.1f}%'></span></div>")
@@ -424,7 +487,7 @@ def render(run: Path) -> str:
 
     parts.append("<h2>Who got named</h2>")
     parts.append(
-        f"<p class='hint'>{esc(brand)} (from deterministic <code>brand_mentioned</code>) plus "
+        f"<p class='hint'>{esc(brand)} (strict brand match: {esc(brand_terms_words(brand, aliases))}) plus "
         "<b>known</b> competitors: config seed list, union regex + LLM extract after normalize. "
         "All engines, both arms. Surprises are not in this pile.</p>"
     )
@@ -452,7 +515,7 @@ def render(run: Path) -> str:
         f"query strings, union regex over brand/aliases/config competitors, including {esc(brand)} "
         "when an alias appeared in the query box. A surprise badge here means the name is "
         "<b>not on the config seed list</b> — this chart does not reuse answer-side Surprise "
-        "competitors. Evidence <code>vendors_in_search_queries</code> and board ⚠ stay regex-only.</p>"
+        "competitors. The stored search-box vendor list and the board ⚠ marks stay regex-only.</p>"
     )
     parts.append("<div class='vendor-bars'>")
     if search_vendor_counts:
@@ -478,7 +541,7 @@ def render(run: Path) -> str:
         tags = set()
         parts.append("<tr class='prompt-row' data-i='%d'>" % i)
         why = row.get("why") or row.get("class") or ""
-        parts.append(f"<td class='qcell'><button type='button' class='expand'>▸</button><span class='prompt-q'>{esc(row['prompt_text'])}</span> <span class='why'>{esc(why)}</span></td>")
+        parts.append(f"<td class='qcell'><button type='button' class='expand'>▸</button><span class='prompt-q'>{esc(row['prompt_text'])}</span> <span class='why'>{esc(plain_class(why))}</span></td>")
         drawer = []
         for e in ENGINES:
             arms = row["engines"].get(e) or {}
