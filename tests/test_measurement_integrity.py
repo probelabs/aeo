@@ -301,6 +301,12 @@ class RetrievalTests(unittest.TestCase):
         self.assertTrue(f["cited"])
         self.assertEqual(f["stage"], "named")
 
+    def test_codex_shortened_query_copies_are_dropped(self):
+        docs = [{"type": "item.completed", "item": {"id": "1", "type": "web_search", "action": {
+            "type": "search", "query": "requirements traceability ...",
+            "queries": ["requirements traceability ...", "requirements traceability tools"]}}}]
+        self.assertEqual([s["query"] for s in retrieval.codex_chain(docs)["steps"]], ["requirements traceability tools"])
+
     def test_open_page_is_a_fetch(self):
         docs = [{"type": "item.completed", "item": {"id": "1", "type": "web_search", "action": {"type": "open_page", "url": "https://reqproof.com"}}}]
         chain = retrieval.codex_chain(docs)

@@ -170,6 +170,10 @@ def codex_chain(docs: list[Any]) -> dict[str, Any]:
         q = action.get("query") or item.get("query")
         if isinstance(q, str) and q.strip() and q not in queries:
             queries.insert(0, q)
+        # Codex repeats a shortened copy ("... ") of a query it also lists in full.
+        full = [x for x in queries if not x.rstrip().endswith("...")]
+        queries = [x for x in queries
+                   if not (x.rstrip().endswith("...") and any(f.startswith(x.rstrip()[:-3].rstrip()) for f in full))]
         for q in queries or [""]:
             steps.append({"kind": "search", "query": q, "results": None})
     return {"steps": steps, "results_exposed": False}
