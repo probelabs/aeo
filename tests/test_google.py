@@ -261,12 +261,17 @@ class LayerRunTests(unittest.TestCase):
             self.assertIn("reqproof.com", dl["new_top10_domains"])
             self.assertIn("AIO citation gained", render_google_markdown(doc))
 
-    def test_no_credentials_skips_silently(self):
+    def test_no_credentials_skips_google_and_marks_gsc_not_connected(self):
         with tempfile.TemporaryDirectory() as d:
             cp = self.config(d)
-            res = run_layers(cp, Path(d) / "x.google", env={"GSC_OAUTH_TOKEN_FILE": str(Path(d) / "none.json")}, log=lambda m: self.fail(m))
-            self.assertEqual(res, {"google": None, "gsc": None, "proposals": None})
-            self.assertFalse((Path(d) / "x.google").exists())
+            logs = []
+            res = run_layers(cp, Path(d) / "x.google", env={"GSC_OAUTH_TOKEN_FILE": str(Path(d) / "none.json")}, log=logs.append)
+            self.assertIsNone(res["google"])
+            self.assertIsNone(res["proposals"])
+            self.assertEqual(res["gsc"]["status"], "unavailable")
+            self.assertEqual(res["gsc"]["state"], "not_connected")
+            self.assertFalse((Path(d) / "x.google" / "google.json").exists())
+            self.assertTrue(any("not connected" in m for m in logs))
 
     def test_disabled_in_config(self):
         with tempfile.TemporaryDirectory() as d:
