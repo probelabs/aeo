@@ -438,7 +438,10 @@ def verdict_section(summary: dict, brand: str, domain: str, *, change: dict, act
 
         tsum = ((gdoc.get("summary") or gmod.summarize(gdoc)).get(gmod.TARGET_TIER) or {})
         tiles.append(("Google AI Overviews cite us", n_of(tsum.get("own_cited"), tsum.get("searches")), "target searches"))
-    if sdoc:
+    if sdoc and str(sdoc.get("status") or "ok") != "ok":
+        tiles.append(("Search Console", {"no_access": "no access"}.get(str(sdoc.get("state")), "not connected"),
+                      str(sdoc.get("reason") or "no data")))
+    elif sdoc:
         tot = (sdoc.get("totals") or {})
         cur, prev = tot.get("current") or {}, tot.get("previous") or {}
         tiles.append(("Search Console clicks", str(int(cur.get("clicks") or 0)), f"last 28 days · was {int(prev.get('clicks') or 0)}"))

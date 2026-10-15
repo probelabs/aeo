@@ -26,7 +26,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from aeo.google import config_searches, norm_query, write_proposals
+from aeo.google import _now_iso, config_searches, norm_query, write_proposals
 
 SCHEMA_VERSION = "aeo-gsc-v1"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -217,6 +217,50 @@ def _change(cur: dict[str, Any] | None, prev: dict[str, Any] | None) -> dict[str
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def is_available(doc: dict[str, Any] | None) -> bool:
+    """True for a real Search Console layer. An `unavailable` doc means not connected / no access."""
+    return bool(doc) and str(doc.get("status") or "ok") == "ok"
+
+
+def unavailable_reason(error: Exception | str | None) -> tuple[str, str]:
+    """(state, plain reason) for a Search Console layer that could not be fetched."""
+    msg = str(error or "")
+    if not msg:
+        return "not_connected", "no Search Console credentials on this machine"
+    if re.search(r"Search Console (401|403|404)\b", msg):
+        return "no_access", "this Google account has no access to the property"
+    return "error", f"Search Console request failed ({msg[:120]})"
+
+
+def unavailable_doc(raw_cfg: dict[str, Any], out_dir: str | Path | None, *, site: str,
+                    error: Exception | str | None = None) -> dict[str, Any]:
+    """Write gsc.json saying Search Console data is unavailable. Reports show this state, never zeros."""
+    state, reason = unavailable_reason(error)
+    doc = {
+        "schema_version": SCHEMA_VERSION,
+        "status": "unavailable",
+        "state": state,
+        "reason": reason,
+        "generated_at": _now_iso(),
+        "brand": str(raw_cfg.get("brand") or ""),
+        "domain": str(raw_cfg.get("domain") or ""),
+        "site": site,
+        "rank_source": "serp",
+    }
+    if out_dir is not None:
+        out = Path(out_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "gsc.json").write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    return doc
+
+
+def status_words(doc: dict[str, Any]) -> str:
+    """'Search Console not connected for sc-domain:x: <reason>.'"""
+    head = {"no_access": "Search Console: no access", "not_connected": "Search Console not connected"}.get(
+        str(doc.get("state")), "Search Console unavailable")
+    return f"{head} for {doc.get('site') or doc.get('domain')}: {doc.get('reason')}."
 
 
 def run_gsc_layer(

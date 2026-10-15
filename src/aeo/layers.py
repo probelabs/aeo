@@ -119,14 +119,27 @@ def run_layers(
         if q is None:
             tokens = gsc.gsc_credentials(env)
             q = gsc.http_query(tokens) if tokens else None
+        err: Exception | None = None
         if q is not None:
             try:
                 bp = g.discover_baseline(out, str(raw.get("domain") or ""), before=now, name="gsc.json")
                 base = json.loads(bp.read_text(encoding="utf-8")) if bp else None
+                if base is not None and not gsc.is_available(base):
+                    base = None
                 result["gsc"] = gsc.run_gsc_layer(raw, out, query=q, settings=ss, baseline=base,
                                                   baseline_path=str(bp) if bp else None, proposals_file=props, log=log)
             except Exception as e:
+                err = e
                 log(f"gsc: layer failed ({type(e).__name__}: {e}); board unaffected")
+        if result["gsc"] is None:
+            try:
+                doc = gsc.unavailable_doc(raw, out, site=str(ss["site"]), error=err)
+                result["gsc"] = doc
+                log(f"gsc: {gsc.status_words(doc)} Reports use the Google SERP rank instead.")
+                if props.exists() or result.get("proposals"):
+                    g.write_proposals(props, gsc_status={k: doc[k] for k in ("status", "state", "reason", "site", "rank_source")})
+            except Exception as e:  # never fail the run over this
+                log(f"gsc: could not record unavailable state ({type(e).__name__}: {e})")
     return result
 
 
@@ -197,6 +210,8 @@ def delta_words(d: dict[str, Any] | None) -> list[str]:
 
 
 def _gsc_by_query(gsc_doc: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if not gsc.is_available(gsc_doc):
+        return {}
     return {g.norm_query(x.get("query", "")): x for x in (gsc_doc or {}).get("searches") or []}
 
 
@@ -265,16 +280,18 @@ def render_google_markdown(doc: dict[str, Any], gsc_doc: dict[str, Any] | None =
         L.append("")
     watch = [x for x in doc.get("searches") or [] if x.get("tier") == g.WATCH_TIER]
     if watch:
-        L += ["### Watch list", "", "| Search | AIO | Cited | Our rank | GSC impr | Top AIO sources | Since last run |", "|---|---|---|---|---|---|---|"]
+        has_gsc = gsc.is_available(gsc_doc)
+        L += ["### Watch list", "", "| Search | AIO | Cited | Our rank | " + ("GSC impr | " if has_gsc else "") + "Top AIO sources | Since last run |",
+              "|---|---|---|---|---|---|" + ("---|" if has_gsc else "")]
         for x in watch:
             s = x.get("serp") or {}
             gq = (by_gsc.get(g.norm_query(x["query"])) or {}).get("current") or {}
             if not s.get("ok"):
-                L.append(f"| {_md(x['query'])} | err | | | | {_md(s.get('error'))} | |")
+                L.append(f"| {_md(x['query'])} | err | | | " + ("| " if has_gsc else "") + f"{_md(s.get('error'))} | |")
                 continue
             L.append(
                 f"| {_md(x['query'])} | {'yes' if s.get('aio_present') else 'no'} | {'**yes**' if s.get('own_cited') else ''} | "
-                f"{_rank_word_depth(s.get('own_rank'), st.get('watch_depth'), s.get('organic_count'))} | {_num(gq.get('impressions')) if gq else ''} | {', '.join((s.get('aio_ref_domains') or [])[:4])} | {_md('; '.join(delta_words(x.get('delta'))))} |"
+                f"{_rank_word_depth(s.get('own_rank'), st.get('watch_depth'), s.get('organic_count'))} | " + ((f"{_num(gq.get('impressions')) if gq else ''} | ") if has_gsc else "") + f"{', '.join((s.get('aio_ref_domains') or [])[:4])} | {_md('; '.join(delta_words(x.get('delta'))))} |"
             )
         L.append("")
     return "\n".join(L).rstrip() + "\n"
@@ -289,6 +306,9 @@ def _md_rows(rows: list[dict[str, Any]], label: str) -> list[str]:
 
 
 def render_gsc_markdown(doc: dict[str, Any]) -> str:
+    if not gsc.is_available(doc):
+        return ("## Search Console\n\n" + gsc.status_words(doc)
+                + " No Search Console numbers are shown; current positions come from the live Google results.\n")
     w = doc.get("windows") or {}
     tc = (doc.get("totals") or {}).get("current") or {}
     tp = (doc.get("totals") or {}).get("previous") or {}
@@ -450,12 +470,14 @@ def render_google_html(doc: dict[str, Any], gsc_doc: dict[str, Any] | None = Non
     t, w = sm.get(g.TARGET_TIER) or {}, sm.get(g.WATCH_TIER) or {}
     dom = doc.get("domain") or ""
     by_gsc = _gsc_by_query(gsc_doc)
+    has_gsc = gsc.is_available(gsc_doc)
     notes = current_target_notes() if notes is None else notes
     targets = [x for x in doc.get("searches") or [] if x.get("tier") == g.TARGET_TIER]
     P = ['<section class="aeo-layer google" id="google">', "<h2>Google</h2>"]
     P.append(
         f'<p class="note">Live Google results for {_e(location_words(st.get("location_code"), st.get("language_code"), st.get("device")))}, '
         f'checked {_e(user_time(doc.get("generated_at")))}. Separate from the AI-assistant numbers above.'
+        + ("" if has_gsc or not gsc_doc else f' {_e(gsc.status_words(gsc_doc))} "Our rank" is the live Google rank.')
         + (f' Compared with the check from {_e(user_time(doc["baseline"].get("generated_at")))}.' if doc.get("baseline") else "")
         + "</p>"
     )
@@ -474,19 +496,19 @@ def render_google_html(doc: dict[str, Any], gsc_doc: dict[str, Any] | None = Non
         for k, v in cards) + "</div>")
     if targets:
         rows = ['<table class="gsum"><tr><th>#</th><th>Search</th><th>AI Overview</th><th>Cites us</th><th>Our rank</th>'
-                '<th>Most-cited sites in the AI Overview</th><th class="n">Search Console impressions</th></tr>']
+                '<th>Most-cited sites in the AI Overview</th>' + ('<th class="n">Search Console impressions</th>' if has_gsc else '') + '</tr>']
         for x in targets:
             s = x.get("serp") or {}
             gq = (by_gsc.get(g.norm_query(x["query"])) or {}).get("current") or {}
             if not s.get("ok"):
-                rows.append(f"<tr><td>{_e(x.get('priority'))}</td><td>{_e(x['query'])}</td><td colspan=5>error: {_e(s.get('error'))}</td></tr>")
+                rows.append(f"<tr><td>{_e(x.get('priority'))}</td><td>{_e(x['query'])}</td><td colspan={5 if has_gsc else 4}>error: {_e(s.get('error'))}</td></tr>")
                 continue
             rows.append(
                 f"<tr><td>{_e(x.get('priority'))}</td><td><a href=\"#gt-{_e(x.get('priority'))}\">{_e(x['query'])}</a></td>"
                 f"<td>{'yes' if s.get('aio_present') else 'no'}</td><td>{'yes' if s.get('own_cited') else 'no'}</td>"
                 f"<td>{_e(_not_ranked(s.get('own_rank'), s.get('organic_count')))}</td>"
                 f"<td class=\"dom\">{_e(', '.join((s.get('aio_ref_domains') or [])[:4]) or '—')}</td>"
-                f"<td class=\"n\">{_e(_num(gq.get('impressions')) if gq else '0')}</td></tr>"
+                + (f"<td class=\"n\">{_e(_num(gq.get('impressions')) if gq else '0')}</td>" if has_gsc else "") + "</tr>"
             )
         rows.append("</table>")
         P.append(_wrap("".join(rows)))
@@ -531,7 +553,7 @@ def render_google_html(doc: dict[str, Any], gsc_doc: dict[str, Any] | None = Non
     watch = [x for x in doc.get("searches") or [] if x.get("tier") == g.WATCH_TIER]
     if watch:
         P.append("<h3>Watch list</h3>")
-        rows = ['<table><tr><th>Search</th><th>AI Overview</th><th>Cites us</th><th>Our rank</th><th class="n">Search Console impressions</th><th>Top AI Overview sources</th><th>Since last check</th></tr>']
+        rows = ['<table><tr><th>Search</th><th>AI Overview</th><th>Cites us</th><th>Our rank</th>' + ('<th class="n">Search Console impressions</th>' if has_gsc else '') + '<th>Top AI Overview sources</th><th>Since last check</th></tr>']
         for x in watch:
             s = x.get("serp") or {}
             gq = (by_gsc.get(g.norm_query(x["query"])) or {}).get("current") or {}
@@ -541,7 +563,7 @@ def render_google_html(doc: dict[str, Any], gsc_doc: dict[str, Any] | None = Non
             own = ' class="own"' if s.get("own_cited") or (s.get("own_rank") or 999) <= 10 else ""
             rows.append(
                 f"<tr{own}><td>{_e(x['query'])}</td><td>{'yes' if s.get('aio_present') else 'no'}</td><td>{'yes' if s.get('own_cited') else ''}</td>"
-                f"<td>{_e(_not_ranked(s.get('own_rank'), s.get('organic_count')))}</td><td class=\"n\">{_e(_num(gq.get('impressions')) if gq else '')}</td>"
+                f"<td>{_e(_not_ranked(s.get('own_rank'), s.get('organic_count')))}</td>" + (f"<td class=\"n\">{_e(_num(gq.get('impressions')) if gq else '')}</td>" if has_gsc else "") + ""
                 f"<td class=\"dom\">{_e(', '.join((s.get('aio_ref_domains') or [])[:4]))}</td><td>{_e('; '.join(delta_words(x.get('delta'))))}</td></tr>"
             )
         rows.append("</table>")
@@ -585,6 +607,10 @@ def position_words(change: Any, prev: Any) -> str:
 def render_gsc_html(doc: dict[str, Any]) -> str:
     from aeo.report_ux import user_time
 
+    if not gsc.is_available(doc):
+        return ('<section class="aeo-layer gsc" id="search-console"><h2>Search Console</h2>'
+                f'<p class="note"><b>{_e(gsc.status_words(doc))}</b> No Search Console numbers are shown; '
+                'current positions come from the live Google results.</p></section>')
     w = doc.get("windows") or {}
     tot = doc.get("totals") or {}
     tc, tp, ch = tot.get("current") or {}, tot.get("previous") or {}, tot.get("change") or {}

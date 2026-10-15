@@ -222,5 +222,72 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(validate_config(cfg), [])
 
 
+
+class UnavailableSearchConsoleTests(unittest.TestCase):
+    CFG = {"brand": "Acme", "domain": "acme.io", "google_targets": [{"query": "api gateway", "priority": 1}]}
+
+    def _google_doc(self):
+        return {"schema_version": g.SCHEMA_VERSION, "domain": "acme.io", "settings": {}, "generated_at": "2026-10-15T10:00:00Z",
+                "searches": [{"query": "api gateway", "tier": g.TARGET_TIER, "priority": 1,
+                              "serp": {"ok": True, "aio_present": True, "own_cited": False, "own_rank": 7, "organic_count": 100,
+                                       "aio_ref_domains": ["kong.com"], "top10": []}},
+                             {"query": "kong alternatives", "tier": g.WATCH_TIER,
+                              "serp": {"ok": True, "aio_present": True, "own_rank": None, "organic_count": 100}}]}
+
+    def _run_with(self, query):
+        d = tempfile.mkdtemp()
+        cp = Path(d) / "c.json"
+        cp.write_text(json.dumps(self.CFG))
+        logs = []
+        res = run_layers(cp, Path(d) / "g", gsc_query=query, skip_google=True, log=logs.append)
+        return d, res, logs
+
+    def test_no_access_is_recorded_not_zeros(self):
+        def denied(site, body):
+            raise RuntimeError(f"Search Console 403 for {site}")
+        d, res, logs = self._run_with(denied)
+        doc = res["gsc"]
+        self.assertEqual((doc["status"], doc["state"], doc["site"]), ("unavailable", "no_access", "sc-domain:acme.io"))
+        self.assertNotIn("totals", doc)
+        on_disk = json.loads((Path(d) / "g" / "gsc.json").read_text())
+        self.assertEqual(on_disk["state"], "no_access")
+        self.assertFalse(gsc.is_available(on_disk))
+
+    def test_other_error_is_unavailable_and_run_continues(self):
+        def boom(site, body):
+            raise RuntimeError("Search Console query failed: URLError")
+        _, res, _ = self._run_with(boom)
+        self.assertEqual(res["gsc"]["state"], "error")
+
+    def test_reports_drop_gsc_columns_and_show_state(self):
+        doc = gsc.unavailable_doc(self.CFG, None, site="sc-domain:acme.io", error="Search Console 403 for sc-domain:acme.io")
+        html = render_layers_html(self._google_doc(), doc)
+        self.assertIn("Search Console: no access for sc-domain:acme.io", html)
+        self.assertNotIn("Search Console impressions", html)
+        self.assertIn("#7", html)  # SERP rank is the position shown
+        self.assertNotIn("Clicks", html)
+        md = render_gsc_markdown(doc)
+        self.assertIn("no access", md)
+        self.assertNotIn("| Clicks |", md)
+        from aeo.layers import render_google_markdown
+        gm = render_google_markdown(self._google_doc(), doc)
+        self.assertNotIn("GSC impr", gm)
+
+    def test_available_doc_keeps_gsc_columns(self):
+        live = {"schema_version": gsc.SCHEMA_VERSION, "site": "sc-domain:acme.io", "searches": []}
+        self.assertTrue(gsc.is_available(live))
+        self.assertIn("Search Console impressions", render_layers_html(self._google_doc(), live))
+
+    def test_proposals_record_gsc_state(self):
+        d = tempfile.mkdtemp()
+        cp = Path(d) / "c.json"
+        cp.write_text(json.dumps({"brand": "Acme", "domain": "acme.io"}))
+        props = g.proposals_path(cp)
+        g.write_proposals(props, google_targets=[{"query": "x"}])
+        run_layers(cp, Path(d) / "g", env={"GSC_OAUTH_TOKEN_FILE": str(Path(d) / "none.json")}, skip_google=True, log=lambda m: None)
+        p = json.loads(props.read_text())
+        self.assertEqual(p["gsc_status"]["state"], "not_connected")
+        self.assertEqual(p["gsc_status"]["rank_source"], "serp")
+
 if __name__ == "__main__":
     unittest.main()
